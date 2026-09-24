@@ -25,15 +25,29 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.io.UnsupportedEncodingException;
 import java.io.Writer;
+import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.util.ArrayList;
+import java.util.Calendar;
 import java.util.Collection;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Hashtable;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Random;
+import java.util.UUID;
 import java.util.Vector;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import javax.activation.DataHandler;
 import javax.activation.FileDataSource;
@@ -47,8 +61,13 @@ import javax.mail.internet.InternetAddress;
 import javax.mail.internet.MimeBodyPart;
 import javax.mail.internet.MimeMessage;
 import javax.mail.internet.MimeMultipart;
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import javax.xml.transform.OutputKeys;
 import javax.xml.transform.Transformer;
 import javax.xml.transform.TransformerFactory;
+import javax.xml.transform.URIResolver;
+import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import javax.xml.transform.stream.StreamSource;
 
@@ -82,6 +101,7 @@ import com.ibm.di.fc.FunctionInterface;
 import com.ibm.di.loader.IDILoader;
 import com.ibm.di.parser.LDIFParser;
 import com.ibm.di.parser.ParserInterface;
+import com.ibm.di.plugin.security.pki.IDIPasswordCrypto;
 import com.ibm.di.queue.MemBufferQ;
 import com.ibm.di.queue.MemBufferQFactory;
 import com.ibm.di.script.ScriptEngineOptions;
@@ -129,6 +149,7 @@ public class UserFunctions {
 	 */
 	public RSInterface server = null;
 
+	/** Array of invalid XML characters that need to be filtered. */
 	public final static char[] INVALID_XML_CHARS = { '\u0000', '\u0001', '\u0002', '\u0003', '\u0004', '\u0005', '\u0006',
 			'\u0007', '\u0008', '\u000b', '\u000c', '\u000e', '\u000f', '\u0010', '\u0011', '\u0012', '\u0013', '\u0014', '\u0015',
 			'\u0016', '\u0017', '\u0018', '\u0019', '\u001f' };
@@ -187,7 +208,7 @@ public class UserFunctions {
 	 * @param source
 	 *            The string from which characters are removed
 	 * @return string with removed characters specified by <code>s</code>
-	 * @throws Exception
+	 * @throws Exception if the operation fails
 	 */
 	public String remove(String s, String source) throws Exception {
 		if (source == null)
@@ -233,10 +254,10 @@ public class UserFunctions {
 	 * @param str
 	 *            The string with a number
 	 * @return The Integer object
-	 * @throws Exception
+	 * @throws Exception if the string cannot be parsed as an integer
 	 */
 	public Integer toInt(String str) throws Exception {
-		return new Integer(str);
+		return Integer.valueOf(str);
 	}
 
 	/**
@@ -295,7 +316,7 @@ public class UserFunctions {
 	 * @param path
 	 *            The file path to open (overwrites existing file)
 	 * @return The BufferedWriter object
-	 * @throws Exception
+	 * @throws Exception if the file cannot be opened or created
 	 */
 	public BufferedWriter openFileForOutput(String path) throws Exception {
 		FileWriter w = new FileWriter(new File(path));
@@ -747,7 +768,7 @@ public class UserFunctions {
 	public Object newObject(String className) {
 		try {
 			Class<?> c = Class.forName(className);
-			return c.newInstance();
+			return c.getDeclaredConstructor().newInstance();
 		} catch (Exception e) {
 			lastError = e;
 			return null;
@@ -935,8 +956,10 @@ public class UserFunctions {
 	 * Response is carried out.
 	 * <p>
 	 * This behavior is identical to that caused by the following call:
+	 * </p>
 	 * <p>
-	 * <tt>system.exitBranch("Flow");</tt>
+	 * <code>system.exitBranch("Flow");</code>
+	 * </p>
 	 * 
 	 * @throws ExitBranchException
 	 *             to tell the AssemblyLine to exit the Flow Section
@@ -950,9 +973,10 @@ public class UserFunctions {
 	 * any more of the Flow Section components. In other words, the current
 	 * cycle of the AL ends.
 	 * <p>
-	 * If the skipResponse parameter pass is <tt>false</tt>, then in the case of
+	 * If the skipResponse parameter pass is <code>false</code>, then in the case of
 	 * a Server mode Connector, the Response is carried out. If skipResponse is
-	 * <tt>true</tt>, no Response is sent.
+	 * <code>true</code>, no Response is sent.
+	 * </p>
 	 * 
 	 * @param skipResponse
 	 *            Whether or not a Response should be sent if a Server mode
@@ -2507,6 +2531,59 @@ public class UserFunctions {
 	}
 
 	/**
+	 * getRsaEncrypted: Obtain encrypted (and ascii-encoded) value for plain
+	 * text specified, null strings are not processed and will be returned as
+	 * null.
+	 * 
+	 * @param plainText
+	 *            String representing value to be encrypted using public key
+	 * @param ksPath
+	 *            String representing file path to jks file
+	 * @param ksPassword
+	 *            String representing password for jks file as specified by path
+	 * @param certificateAlias
+	 *            String naming the alias of certificate in keystore file
+	 * @return String representing encrypted format, null is returned if a null
+	 *         is passed in.
+	 * @throws java.lang.Exception
+	 *             when underlying function fails
+	 * @throws Exception
+	 */
+	public String getRsaEncrypted(String plainText, String ksPath, String ksPassword, String certificateAlias)
+			throws java.lang.Exception {
+		return IDIPasswordCrypto.encrypt(plainText, ksPath, ksPassword, certificateAlias);
+
+	}
+
+	/**
+	 * getRsaDecrypted: Obtain plain ascii text for encrypted ciphertext
+	 * specified. Null strings are not processed and will be returned as
+	 * received. Empty strings will be encoded/encrypted.
+	 * 
+	 * @param cipherText
+	 *            String representing value to be decrypted using private key
+	 * @param ksPath
+	 *            String representing file path to jks file
+	 * @param ksPassword
+	 *            String representing password for jks file as specified by path
+	 * @param certificateAlias
+	 *            String naming the alias of certificate in keystore file
+	 * @param certificatePassword
+	 *            String representing password certificate
+	 * @return String representing the decrypted format of the received string.
+	 *         Null is returned when a null is received.
+	 * @throws java.lang.Exception
+	 *             when underlying function fails
+	 * @throws Exception
+	 */
+	public String getRsaDecrypted(String cipherText, String ksPath, String ksPassword, String certificateAlias,
+			String certificatePassword) throws java.lang.Exception {
+
+		return IDIPasswordCrypto.decrypt(cipherText, ksPath, ksPassword, certificateAlias, certificatePassword);
+
+	}
+
+	/**
 	 * Creates an AssemblyLine Pool object from the specified AssemblyLine name.
 	 * 
 	 * @param assemblyLine
@@ -2781,6 +2858,7 @@ public class UserFunctions {
 	 * @return MemBufferQ
 	 * @throws Exception
 	 */
+	@SuppressWarnings("deprecation")
 	public static MemBufferQ newPipe(String instName, String pipeName, int watermark) throws Exception {
 		return MemBufferQFactory.getInstance(instName).newPipe(pipeName, watermark);
 	}
@@ -2916,9 +2994,12 @@ public class UserFunctions {
 	 * Set external property in a specific extprop object
 	 * 
 	 * @param extObj
+	 *            The external object containing properties
 	 * @param propName
+	 *            The property name to set
 	 * @param value
-	 * @throws Exception
+	 *            The property value to set
+	 * @throws Exception if the operation fails
 	 * @deprecated use {@link #setTDIProperty(String, String, Object)} instead
 	 */
 	@Deprecated
@@ -3415,6 +3496,7 @@ public class UserFunctions {
 		return count;
 	}
 	
+	/** @deprecated Internal utility method for JSON payload parsing. */
 	public static String getmethodPayload(String jsonStr, int index)
 	{
 		ObjectMapper objectMapper = new ObjectMapper();
@@ -3441,6 +3523,7 @@ public class UserFunctions {
 		return method;
 	}
 	
+	/** @deprecated Internal utility method for JSON payload parsing. */
 	public static String getpathPayload(String jsonStr, int index)
 	{
 		ObjectMapper objectMapper = new ObjectMapper();
@@ -3467,6 +3550,7 @@ public class UserFunctions {
 		return path;
 	}
 	
+	/** @deprecated Internal utility method for JSON payload parsing. */
 	public static String getdataPayload(String jsonStr, String nodeName, int index)
 	{
 		ObjectMapper objectMapper = new ObjectMapper();
@@ -3493,6 +3577,7 @@ public class UserFunctions {
 		return data;
 	}
 	
+	/** @deprecated Internal utility method for JSON payload parsing. */
 	public static String getpatchopPayload(String jsonStr, int index)
 	{
 		ObjectMapper objectMapper = new ObjectMapper();
@@ -3519,12 +3604,13 @@ public class UserFunctions {
 		return op;
 	}
 	
+	/** @deprecated Internal utility method for JSON payload parsing. */
 	public static String getpatchattrValuePayload(String jsonStr, String attrName, int index)
 	{
 		
 		ObjectMapper objectMapper = new ObjectMapper();
 		String var1,result,attrValue=null;
-		JsonNode bNode,cNode,dNode,eNode;
+		JsonNode cNode,dNode,eNode;
 			
 		try{
 			// Parse JSON into JsonNode
@@ -3532,7 +3618,7 @@ public class UserFunctions {
 			JsonNode aNode = rootNode.path("Operations");
 			System.out.println("array size="+aNode.size());
 			for (int i=0;i<aNode.size();i++){
-				bNode = aNode.get(i).path("op");
+				// Note: aNode.get(i).path("op") was assigned to bNode but never used
 				cNode = aNode.get(i).path("path");
 				var1=cNode.toString();
 				result = var1. replaceAll("\"", "");
@@ -3556,26 +3642,5316 @@ public class UserFunctions {
 		}
 		return attrValue;
 	}
+	// ========================================================================
+	// IBM JavaScript Long Precision Handling Methods
+	// ========================================================================
+	// The IBM JavaScript engine stores all numbers as IEEE 754 doubles with
+	// ~53-bit precision. Java long values (64-bit) lose precision when converted.
+	// These methods handle long values as strings to preserve precision.
+	// ========================================================================
+
+	/**
+	 * Converts a string representation of a long value to a Java Long object.
+	 * This method preserves precision for values that exceed JavaScript's
+	 * 53-bit number precision limit (2^53 = 9,007,199,254,740,992).
+	 * <p>
+	 * <b>Background:</b> The IBM JavaScript engine stores all numbers as IEEE 754
+	 * doubles, which have approximately 53 bits of precision. Java long values
+	 * are 64-bit integers. When long values greater than 2^53 are passed from
+	 * JavaScript to Java, they lose precision. This method allows you to pass
+	 * long values as strings to preserve their exact value.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // JavaScript - pass large ID as string to avoid precision loss
+	 * var userId = &quot;9223372036854775807&quot;;  // Max long value
+	 * var longId = system.toLong(userId);
+	 * 
+	 * // Use in Java method calls
+	 * connector.lookup(longId);
+	 * </pre>
+	 * 
+	 * @param str
+	 *            The string representation of the long value. Leading and trailing
+	 *            whitespace is automatically trimmed.
+	 * @return The Long object representing the parsed value
+	 * @throws Exception
+	 *             if {@code str} is null or cannot be parsed as a valid long value
+	 * @see #isValidLong(String)
+	 * @see #longToString(long)
+	 * @see #addLongs(String, String)
+	 * @since 10.1
+	 */
+	public Long toLong(String str) throws Exception {
+		try {
+			return Long.parseLong(str.trim());
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long value: " + str, e);
+		}
+	}
+
+	/**
+	 * Validates whether a string represents a valid long value.
+	 * <p>
+	 * This method checks if the string can be successfully parsed as a Java long
+	 * without throwing an exception. It's useful for validating input before
+	 * attempting conversion.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var id = work.getString(&quot;userId&quot;);
+	 * if (system.isValidLong(id)) {
+	 *     var longId = system.toLong(id);
+	 *     // Safe to use
+	 * } else {
+	 *     task.logmsg(&quot;Invalid user ID: &quot; + id);
+	 * }
+	 * </pre>
+	 * 
+	 * @param str
+	 *            The string to validate
+	 * @return true if the string represents a valid long value, false otherwise
+	 * @see #toLong(String)
+	 * @since 10.1
+	 */
+	public boolean isValidLong(String str) {
+		if (str == null || str.trim().isEmpty()) {
+			return false;
+		}
+		try {
+			Long.parseLong(str.trim());
+			return true;
+		} catch (NumberFormatException e) {
+			lastError = e;
+			return false;
+		}
+	}
+
+	/**
+	 * Converts a Java long value to a string for safe JavaScript handling.
+	 * <p>
+	 * Use this method when returning long values from Java methods to JavaScript
+	 * to ensure precision is preserved. The string can then be passed back to
+	 * Java using {@link #toLong(String)} without precision loss.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Get long from Java object
+	 * var timestamp = javaObject.getTimestamp();  // Returns long
+	 * var timestampStr = system.longToString(timestamp);
+	 * // Now safe to manipulate in JavaScript
+	 * work.put(&quot;timestamp&quot;, timestampStr);
+	 * </pre>
+	 * 
+	 * @param value
+	 *            The long value to convert
+	 * @return String representation of the long value
+	 * @see #toLong(String)
+	 * @since 10.1
+	 */
+	public String longToString(long value) {
+		return Long.toString(value);
+	}
+
+	/**
+	 * Compares two long values represented as strings.
+	 * <p>
+	 * This method allows comparison of long values without converting them to
+	 * JavaScript numbers, which would lose precision for large values.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var id1 = &quot;9223372036854775807&quot;;
+	 * var id2 = &quot;9223372036854775806&quot;;
+	 * var result = system.compareLongs(id1, id2);
+	 * if (result &gt; 0) {
+	 *     task.logmsg(&quot;id1 is greater&quot;);
+	 * } else if (result &lt; 0) {
+	 *     task.logmsg(&quot;id2 is greater&quot;);
+	 * } else {
+	 *     task.logmsg(&quot;Equal&quot;);
+	 * }
+	 * </pre>
+	 * 
+	 * @param long1
+	 *            First long value as string
+	 * @param long2
+	 *            Second long value as string
+	 * @return -1 if long1 &lt; long2, 0 if equal, 1 if long1 &gt; long2
+	 * @throws Exception
+	 *             if either {@code long1} or {@code long2} cannot be parsed as a
+	 *             valid long value
+	 * @see #toLong(String)
+	 * @since 10.1
+	 */
+	public int compareLongs(String long1, String long2) throws Exception {
+		try {
+			Long l1 = Long.parseLong(long1.trim());
+			Long l2 = Long.parseLong(long2.trim());
+			return l1.compareTo(l2);
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long values for comparison", e);
+		}
+	}
+
+	/**
+	 * Adds two long values represented as strings without precision loss.
+	 * <p>
+	 * This method performs arithmetic on long values while preserving full
+	 * precision. The result is returned as a string to maintain precision when
+	 * used in JavaScript.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var baseId = &quot;9000000000000000000&quot;;
+	 * var offset = &quot;1000000000000&quot;;
+	 * var newId = system.addLongs(baseId, offset);
+	 * work.put(&quot;newId&quot;, newId);
+	 * </pre>
+	 * 
+	 * @param long1
+	 *            First long value as string
+	 * @param long2
+	 *            Second long value as string
+	 * @return String representation of the sum
+	 * @throws Exception
+	 *             if either {@code long1} or {@code long2} cannot be parsed as a
+	 *             valid long value, or if the result overflows a 64-bit long
+	 * @see #subtractLongs(String, String)
+	 * @see #multiplyLongs(String, String)
+	 * @since 10.1
+	 */
+	public String addLongs(String long1, String long2) throws Exception {
+		try {
+			Long l1 = Long.parseLong(long1.trim());
+			Long l2 = Long.parseLong(long2.trim());
+			return Long.toString(l1 + l2);
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long values for addition", e);
+		} catch (ArithmeticException e) {
+			lastError = e;
+			throw new Exception("Long overflow in addition", e);
+		}
+	}
+
+	/**
+	 * Subtracts two long values represented as strings without precision loss.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var total = &quot;9000000000000000000&quot;;
+	 * var used = &quot;1000000000000&quot;;
+	 * var remaining = system.subtractLongs(total, used);
+	 * </pre>
+	 * 
+	 * @param long1
+	 *            First long value as string (minuend)
+	 * @param long2
+	 *            Second long value as string (subtrahend)
+	 * @return String representation of the difference (long1 - long2)
+	 * @throws Exception
+	 *             if either {@code long1} or {@code long2} cannot be parsed as a
+	 *             valid long value, or if the result overflows a 64-bit long
+	 * @see #addLongs(String, String)
+	 * @since 10.1
+	 */
+	public String subtractLongs(String long1, String long2) throws Exception {
+		try {
+			Long l1 = Long.parseLong(long1.trim());
+			Long l2 = Long.parseLong(long2.trim());
+			return Long.toString(l1 - l2);
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long values for subtraction", e);
+		} catch (ArithmeticException e) {
+			lastError = e;
+			throw new Exception("Long overflow in subtraction", e);
+		}
+	}
+
+	/**
+	 * Multiplies two long values represented as strings with overflow detection.
+	 * <p>
+	 * This method uses Math.multiplyExact() to detect overflow conditions and
+	 * throw an exception if the result would exceed the range of a long value.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var quantity = &quot;1000000&quot;;
+	 * var price = &quot;5000000&quot;;
+	 * var total = system.multiplyLongs(quantity, price);
+	 * </pre>
+	 * 
+	 * @param long1
+	 *            First long value as string
+	 * @param long2
+	 *            Second long value as string
+	 * @return String representation of the product
+	 * @throws Exception
+	 *             if either {@code long1} or {@code long2} cannot be parsed as a
+	 *             valid long value, or if the result overflows a 64-bit long
+	 * @see #divideLongs(String, String)
+	 * @since 10.1
+	 */
+	public String multiplyLongs(String long1, String long2) throws Exception {
+		try {
+			Long l1 = Long.parseLong(long1.trim());
+			Long l2 = Long.parseLong(long2.trim());
+			long result = Math.multiplyExact(l1, l2);
+			return Long.toString(result);
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long values for multiplication", e);
+		} catch (ArithmeticException e) {
+			lastError = e;
+			throw new Exception("Long overflow in multiplication", e);
+		}
+	}
+
+	/**
+	 * Divides two long values represented as strings.
+	 * <p>
+	 * This method performs integer division. The result is truncated toward zero.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var total = &quot;1000000000000&quot;;
+	 * var count = &quot;1000&quot;;
+	 * var average = system.divideLongs(total, count);
+	 * </pre>
+	 * 
+	 * @param long1
+	 *            Dividend as string
+	 * @param long2
+	 *            Divisor as string
+	 * @return String representation of the quotient (long1 / long2)
+	 * @throws Exception
+	 *             if either {@code long1} or {@code long2} cannot be parsed as a
+	 *             valid long value, or if {@code long2} is zero
+	 * @see #multiplyLongs(String, String)
+	 * @since 10.1
+	 */
+	public String divideLongs(String long1, String long2) throws Exception {
+		try {
+			Long l1 = Long.parseLong(long1.trim());
+			Long l2 = Long.parseLong(long2.trim());
+			if (l2 == 0) {
+				throw new ArithmeticException("Division by zero");
+			}
+			return Long.toString(l1 / l2);
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long values for division", e);
+		} catch (ArithmeticException e) {
+			lastError = e;
+			throw new Exception("Division error: " + e.getMessage(), e);
+		}
+	}
+
+	/**
+	 * Checks if a long value falls within a specified range.
+	 * <p>
+	 * This method is useful for validating that long values meet business rules
+	 * or constraints without converting to JavaScript numbers.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var userId = &quot;123456789012345&quot;;
+	 * var minId = &quot;100000000000000&quot;;
+	 * var maxId = &quot;999999999999999&quot;;
+	 * if (system.isLongInRange(userId, minId, maxId)) {
+	 *     task.logmsg(&quot;User ID is valid&quot;);
+	 * }
+	 * </pre>
+	 * 
+	 * @param longStr
+	 *            The long value to check as string
+	 * @param min
+	 *            Minimum value (inclusive) as string
+	 * @param max
+	 *            Maximum value (inclusive) as string
+	 * @return true if min &lt;= longStr &lt;= max, false otherwise
+	 * @throws Exception
+	 *             if any of {@code longStr}, {@code min}, or {@code max} cannot
+	 *             be parsed as a valid long value
+	 * @see #compareLongs(String, String)
+	 * @since 10.1
+	 */
+	public boolean isLongInRange(String longStr, String min, String max) throws Exception {
+		try {
+			Long value = Long.parseLong(longStr.trim());
+			Long minVal = Long.parseLong(min.trim());
+			Long maxVal = Long.parseLong(max.trim());
+			return value >= minVal && value <= maxVal;
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long values for range check", e);
+		}
+	}
+
+	/**
+	 * Formats a long value with thousand separators for display purposes.
+	 * <p>
+	 * This method makes large numbers more readable by inserting separators
+	 * (typically commas or periods depending on locale) between groups of digits.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var amount = &quot;1234567890123&quot;;
+	 * var formatted = system.formatLongWithSeparator(amount, &quot;,&quot;);
+	 * task.logmsg(&quot;Amount: &quot; + formatted);  // &quot;1,234,567,890,123&quot;
+	 * </pre>
+	 * 
+	 * @param longStr
+	 *            The long value as string
+	 * @param separator
+	 *            The separator character to use (e.g., "," or ".")
+	 * @return Formatted string with separators
+	 * @throws Exception
+	 *             if {@code longStr} cannot be parsed as a valid long value
+	 * @since 10.1
+	 */
+	public String formatLongWithSeparator(String longStr, String separator) throws Exception {
+		try {
+			Long value = Long.parseLong(longStr.trim());
+			return String.format("%,d", value).replace(",", separator);
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid long value for formatting", e);
+		}
+	}
+
+	/**
+	 * Gets the current system time in milliseconds as a string.
+	 * <p>
+	 * This method returns the current timestamp as a string to avoid precision
+	 * loss when handling timestamps in JavaScript. Timestamps in milliseconds
+	 * since epoch often exceed JavaScript's safe integer range.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var timestamp = system.getCurrentTimestamp();
+	 * work.put(&quot;createdAt&quot;, timestamp);
+	 * 
+	 * // Later, convert back to Date if needed
+	 * var date = system.timestampToDate(timestamp);
+	 * </pre>
+	 * 
+	 * @return Current time in milliseconds since epoch as string
+	 * @see #timestampToDate(String)
+	 * @see #longToString(long)
+	 * @since 10.1
+	 */
+	public String getCurrentTimestamp() {
+		return Long.toString(System.currentTimeMillis());
+	}
+
+	// ========================================================================
+	// DN and LDAP String Manipulation Methods
+	// ========================================================================
+
+	/**
+	 * Builds a Distinguished Name (DN) with proper escaping of special characters.
+	 * <p>
+	 * This method constructs an LDAP DN from components while automatically
+	 * escaping special characters according to RFC 4514. Special characters that
+	 * are escaped include: , + " \ &lt; &gt; ; =
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Before (error-prone)
+	 * var dn = &quot;cn=&quot; + firstName + &quot; &quot; + lastName + &quot;,ou=Users,&quot; + baseDN;
+	 * 
+	 * // After (safe)
+	 * var dn = system.buildDN(firstName + &quot; &quot; + lastName, &quot;Users&quot;, baseDN);
+	 * // Result: &quot;cn=John Smith,ou=Users,dc=example,dc=com&quot;
+	 * </pre>
+	 * 
+	 * @param cn
+	 *            The common name (CN) value. Will be escaped automatically.
+	 * @param ou
+	 *            The organizational unit (OU) value. Can be null.
+	 * @param base
+	 *            The base DN (e.g., "dc=example,dc=com"). Can be null.
+	 * @return The complete DN string with proper escaping
+	 * @see #parseDN(String)
+	 * @see #extractCN(String)
+	 * @since 10.1
+	 */
+	public String buildDN(String cn, String ou, String base) {
+		StringBuilder dn = new StringBuilder();
+
+		if (cn != null && !cn.isEmpty()) {
+			dn.append("cn=").append(escapeDNValue(cn));
+		}
+
+		if (ou != null && !ou.isEmpty()) {
+			if (dn.length() > 0)
+				dn.append(",");
+			dn.append("ou=").append(escapeDNValue(ou));
+		}
+
+		if (base != null && !base.isEmpty()) {
+			if (dn.length() > 0)
+				dn.append(",");
+			dn.append(base);
+		}
+
+		return dn.toString();
+	}
+
+	/**
+	 * Escapes special characters in a DN value according to RFC 4514.
+	 * <p>
+	 * This is a helper method used by {@link #buildDN(String, String, String)}.
+	 * Special characters that require escaping: , + " \ &lt; &gt; ; =
+	 * 
+	 * @param value
+	 *            The value to escape
+	 * @return The escaped value
+	 */
+	private String escapeDNValue(String value) {
+		if (value == null)
+			return "";
+
+		StringBuilder escaped = new StringBuilder();
+		for (int i = 0; i < value.length(); i++) {
+			char c = value.charAt(i);
+			if (c == ',' || c == '+' || c == '"' || c == '\\' || c == '<' || c == '>' || c == ';' || c == '=') {
+				escaped.append('\\');
+			}
+			escaped.append(c);
+		}
+		return escaped.toString();
+	}
+
+	/**
+	 * Parses a Distinguished Name (DN) into its component parts.
+	 * <p>
+	 * This method breaks down an LDAP DN into a map of attribute types to values.
+	 * The map preserves the order of components as they appear in the DN.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var dn = &quot;cn=John Smith,ou=Users,dc=example,dc=com&quot;;
+	 * var parts = system.parseDN(dn);
+	 * var cn = parts.get(&quot;cn&quot;);  // &quot;John Smith&quot;
+	 * var ou = parts.get(&quot;ou&quot;);  // &quot;Users&quot;
+	 * var dc = parts.get(&quot;dc&quot;);  // &quot;example&quot; (first occurrence)
+	 * </pre>
+	 * 
+	 * @param dn
+	 *            The Distinguished Name to parse
+	 * @return Map of attribute types (lowercase) to values with escaped characters
+	 *         unescaped
+	 * @see #buildDN(String, String, String)
+	 * @see #extractCN(String)
+	 * @since 10.1
+	 */
+	public Map<String, String> parseDN(String dn) {
+		Map<String, String> components = new LinkedHashMap<>();
+		if (dn == null || dn.isEmpty())
+			return components;
+
+		try {
+			String[] parts = dn.split(",");
+			for (String part : parts) {
+				String[] kv = part.split("=", 2);
+				if (kv.length == 2) {
+					String key = kv[0].trim().toLowerCase();
+					String value = unescapeDNValue(kv[1].trim());
+					components.put(key, value);
+				}
+			}
+		} catch (Exception e) {
+			lastError = e;
+		}
+		return components;
+	}
+
+	/**
+	 * Unescapes special characters in a DN value.
+	 * <p>
+	 * This is a helper method used by {@link #parseDN(String)} and
+	 * {@link #extractCN(String)}.
+	 * 
+	 * @param value
+	 *            The escaped value
+	 * @return The unescaped value
+	 */
+	private String unescapeDNValue(String value) {
+		if (value == null)
+			return null;
+		return value.replace("\\,", ",").replace("\\+", "+").replace("\\\"", "\"").replace("\\\\", "\\")
+				.replace("\\<", "<").replace("\\>", ">").replace("\\;", ";").replace("\\=", "=");
+	}
+
+	/**
+	 * Extracts the Common Name (CN) from a Distinguished Name.
+	 * <p>
+	 * This method is a convenience function for extracting just the CN component
+	 * from a DN without parsing the entire DN.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var dn = &quot;cn=John Smith,ou=Users,dc=example,dc=com&quot;;
+	 * var cn = system.extractCN(dn);  // &quot;John Smith&quot;
+	 * </pre>
+	 * 
+	 * @param dn
+	 *            The Distinguished Name
+	 * @return The CN value with escaped characters unescaped, or null if no CN is
+	 *         found
+	 * @see #parseDN(String)
+	 * @see #getRDN(String)
+	 * @since 10.1
+	 */
+	public String extractCN(String dn) {
+		if (dn == null || dn.isEmpty())
+			return null;
+
+		try {
+			Pattern pattern = Pattern.compile("cn=([^,]+)",
+					Pattern.CASE_INSENSITIVE);
+			Matcher matcher = pattern.matcher(dn);
+			if (matcher.find()) {
+				return unescapeDNValue(matcher.group(1).trim());
+			}
+		} catch (Exception e) {
+			lastError = e;
+		}
+		return null;
+	}
+
+	/**
+	 * Gets the Relative Distinguished Name (RDN) from a DN.
+	 * <p>
+	 * The RDN is the first component of a DN (the leftmost attribute=value pair).
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var dn = &quot;cn=John Smith,ou=Users,dc=example,dc=com&quot;;
+	 * var rdn = system.getRDN(dn);  // &quot;cn=John Smith&quot;
+	 * </pre>
+	 * 
+	 * @param dn
+	 *            The Distinguished Name
+	 * @return The RDN (first component), or the entire DN if no comma is found
+	 * @see #getParentDN(String)
+	 * @see #extractCN(String)
+	 * @since 10.1
+	 */
+	public String getRDN(String dn) {
+		if (dn == null || dn.isEmpty())
+			return null;
+
+		try {
+			int commaIndex = dn.indexOf(',');
+			if (commaIndex > 0) {
+				return dn.substring(0, commaIndex).trim();
+			}
+			return dn.trim();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Gets the parent DN by removing the RDN.
+	 * <p>
+	 * This method is useful for navigating up the DN hierarchy.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var dn = &quot;cn=John Smith,ou=Users,dc=example,dc=com&quot;;
+	 * var parent = system.getParentDN(dn);  // &quot;ou=Users,dc=example,dc=com&quot;
+	 * </pre>
+	 * 
+	 * @param dn
+	 *            The Distinguished Name
+	 * @return The parent DN (everything after the first comma), or null if no
+	 *         parent exists
+	 * @see #getRDN(String)
+	 * @since 10.1
+	 */
+	public String getParentDN(String dn) {
+		if (dn == null || dn.isEmpty())
+			return null;
+
+		try {
+			int commaIndex = dn.indexOf(',');
+			if (commaIndex > 0 && commaIndex < dn.length() - 1) {
+				return dn.substring(commaIndex + 1).trim();
+			}
+		} catch (Exception e) {
+			lastError = e;
+		}
+		return null;
+	}
+
+	/**
+	 * Normalizes an email address to lowercase and removes leading/trailing dots.
+	 * <p>
+	 * This method performs standard email normalization: converts to lowercase,
+	 * trims whitespace, and removes leading/trailing dots. It also validates that
+	 * the result matches a basic email pattern.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var email = &quot;  John.Smith@EXAMPLE.COM  &quot;;
+	 * var normalized = system.normalizeEmail(email);  // &quot;john.smith@example.com&quot;
+	 * </pre>
+	 * 
+	 * @param email
+	 *            The email address to normalize
+	 * @return The normalized email address, or null if the email is invalid
+	 * @since 10.1
+	 */
+	public String normalizeEmail(String email) {
+		if (email == null || email.isEmpty())
+			return null;
+
+		try {
+			String normalized = email.trim().toLowerCase();
+			// Remove leading/trailing dots
+			normalized = normalized.replaceAll("^\\.+|\\.+$", "");
+			// Validate basic format
+			if (normalized.matches("^[A-Za-z0-9+_.-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}$")) {
+				return normalized;
+			}
+		} catch (Exception e) {
+			lastError = e;
+		}
+		return null;
+	}
+
+	// ========================================================================
+	// Error Handling and Retry Logic Methods
+	// ========================================================================
+
+	/**
+	 * Retries an operation with exponential backoff.
+	 * <p>
+	 * This method is essential for reliable connector operations in production
+	 * environments. It automatically retries failed operations with increasing
+	 * delays between attempts, which is particularly useful for handling transient
+	 * network errors, temporary service unavailability, or rate limiting.
+	 * <p>
+	 * The delay between retries doubles with each attempt (exponential backoff),
+	 * starting with the specified initial delay.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var result = system.retryWithBackoff(
+	 *     new java.util.concurrent.Callable({
+	 *         call: function() {
+	 *             return connector.lookup(dn);
+	 *         }
+	 *     }),
+	 *     3,    // max attempts
+	 *     1000  // initial delay 1 second
+	 * );
+	 * </pre>
+	 * @param <T>
+	 *            The type of result returned by the operation
+	 * 
+	 * @param operation
+	 *            The operation to retry, as a Callable that returns a result
+	 * @param maxAttempts
+	 *            Maximum number of attempts (must be &gt; 0)
+	 * @param initialDelayMs
+	 *            Initial delay in milliseconds before first retry
+	 * @return The result of the operation if successful, or null if all attempts
+	 *         fail
+	 * @see #isTransientError(Exception)
+	 * @since 10.1
+	 */
+	public <T> T retryWithBackoff(java.util.concurrent.Callable<T> operation, int maxAttempts, int initialDelayMs) {
+		int attempt = 0;
+		int delay = initialDelayMs;
+
+		while (attempt < maxAttempts) {
+			try {
+				return operation.call();
+			} catch (Exception e) {
+				attempt++;
+				lastError = e;
+
+				if (attempt >= maxAttempts) {
+					getServer().getLog().error("Max retry attempts reached: " + e.getMessage());
+					return null;
+				}
+
+				getServer().getLog()
+						.warn("Attempt " + attempt + " failed, retrying in " + delay + "ms: " + e.getMessage());
+
+				try {
+					Thread.sleep(delay);
+				} catch (InterruptedException ie) {
+					Thread.currentThread().interrupt();
+					return null;
+				}
+
+				delay *= 2; // Exponential backoff
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Determines if an exception represents a transient error that can be retried.
+	 * <p>
+	 * This method examines the exception message to identify common patterns of
+	 * transient errors such as timeouts, connection failures, and rate limiting.
+	 * Use this in conjunction with {@link #retryWithBackoff} to implement
+	 * intelligent retry logic.
+	 * <p>
+	 * <b>Transient error patterns detected:</b>
+	 * <ul>
+	 * <li>timeout</li>
+	 * <li>connection refused</li>
+	 * <li>connection reset</li>
+	 * <li>temporarily unavailable</li>
+	 * <li>service unavailable</li>
+	 * <li>too many requests</li>
+	 * <li>rate limit</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * try {
+	 *     connector.lookup(dn);
+	 * } catch (e) {
+	 *     if (system.isTransientError(e)) {
+	 *         // Retry the operation
+	 *         system.retryEntry();
+	 *     } else {
+	 *         // Fatal error, skip entry
+	 *         system.skipEntry(&quot;Fatal error: &quot; + e.getMessage());
+	 *     }
+	 * }
+	 * </pre>
+	 * 
+	 * @param e
+	 *            The exception to examine
+	 * @return true if the error appears to be transient and retryable, false
+	 *         otherwise
+	 * @see #retryWithBackoff(java.util.concurrent.Callable, int, int)
+	 * @since 10.1
+	 */
+	public boolean isTransientError(Exception e) {
+		if (e == null)
+			return false;
+
+		String msg = e.getMessage();
+		if (msg == null)
+			return false;
+
+		msg = msg.toLowerCase();
+
+		// Common transient error patterns
+		return msg.contains("timeout") || msg.contains("connection refused") || msg.contains("connection reset")
+				|| msg.contains("temporarily unavailable") || msg.contains("service unavailable")
+				|| msg.contains("too many requests") || msg.contains("rate limit");
+	}
+	/**
+	 * Converts a timestamp string (milliseconds since epoch) to a Date object.
+	 * <p>
+	 * This method is the complement to {@link #getCurrentTimestamp()}. It converts
+	 * a timestamp string back to a Java Date object for use in date operations.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var timestampStr = work.getString(&quot;createdAt&quot;);
+	 * var date = system.timestampToDate(timestampStr);
+	 * var formatted = system.formatDate(date, &quot;yyyy-MM-dd HH:mm:ss&quot;);
+	 * </pre>
+	 * 
+	 * @param timestamp
+	 *            The timestamp as string (milliseconds since epoch)
+	 * @return Date object representing the timestamp
+	 * @throws Exception
+	 *             if {@code timestamp} cannot be parsed as a valid long value
+	 * @see #getCurrentTimestamp()
+	 * @see #toLong(String)
+	 * @since 10.1
+	 */
+	public Date timestampToDate(String timestamp) throws Exception {
+		try {
+			long millis = Long.parseLong(timestamp.trim());
+			return new Date(millis);
+		} catch (NumberFormatException e) {
+			lastError = e;
+			throw new Exception("Invalid timestamp: " + timestamp, e);
+		}
+	}
+
+	/**
+	 * Generates a user ID from first and last name.
+	 * <p>
+	 * This method creates a simple user ID by taking the first letter of the first
+	 * name and appending the last name, converting to lowercase and removing
+	 * non-alphanumeric characters. This is a common pattern for generating login
+	 * IDs.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var uid = system.generateUid(&quot;John&quot;, &quot;Smith&quot;);  // &quot;jsmith&quot;
+	 * var uid2 = system.generateUid(&quot;Mary&quot;, &quot;O'Brien&quot;);  // &quot;mobrien&quot;
+	 * </pre>
+	 * 
+	 * @param firstName
+	 *            The first name
+	 * @param lastName
+	 *            The last name
+	 * @return Generated user ID (lowercase, alphanumeric only), or null if inputs
+	 *         are invalid
+	 * @since 10.1
+	 */
+	public String generateUid(String firstName, String lastName) {
+		if (firstName == null || lastName == null)
+			return null;
+
+		try {
+			String uid = (firstName.substring(0, 1) + lastName).toLowerCase();
+			// Remove non-alphanumeric characters
+			uid = uid.replaceAll("[^a-z0-9]", "");
+			return uid;
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	// ========================================================================
+	// Phase 2: TDI-Specific Utility Methods
+	// ========================================================================
+	// Defensive null handling, iterator utilities, configuration helpers,
+	// batch processing, performance measurement, and LDAP filter construction
+	// ========================================================================
+
+	/**
+	 * Returns the first non-null value from the provided arguments.
+	 * <p>
+	 * This method implements the SQL COALESCE function pattern, returning the
+	 * first non-null value from a list of candidates. It's particularly useful
+	 * for providing default values when attributes may be missing or null.
+	 * <p>
+	 * <b>Background:</b> In IBM TDI scripts, attributes may not exist or may be
+	 * null. This method provides a clean way to handle these cases without
+	 * verbose null checks.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Use email, or fallback to username@domain if email is null
+	 * var email = system.coalesce(work.getString("mail"), 
+	 *                             work.getString("uid") + "@example.com");
+	 * 
+	 * // Chain multiple fallbacks
+	 * var displayName = system.coalesce(
+	 *     work.getString("displayName"),
+	 *     work.getString("cn"),
+	 *     work.getString("uid"),
+	 *     "Unknown User"
+	 * );
+	 * </pre>
+	 * 
+	 * @param value
+	 *            The primary value to check
+	 * @param defaultValue
+	 *            The fallback value to use if value is null
+	 * @return value if not null, otherwise defaultValue
+	 * @see #isEmpty(Object)
+	 * @since 10.1
+	 */
+	public Object coalesce(Object value, Object defaultValue) {
+		return value != null ? value : defaultValue;
+	}
+
+	/**
+	 * Checks if a value is empty (null, empty string, empty collection, etc.).
+	 * <p>
+	 * This method provides a comprehensive emptiness check that works with
+	 * multiple data types: null values, strings, collections, maps, and arrays.
+	 * It's more convenient than checking each type separately.
+	 * <p>
+	 * <b>Emptiness Rules:</b>
+	 * <ul>
+	 * <li>null → true</li>
+	 * <li>Empty string or whitespace-only string → true</li>
+	 * <li>Empty Collection → true</li>
+	 * <li>Empty Map → true</li>
+	 * <li>Empty array → true</li>
+	 * <li>All other values → false</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * if (system.isEmpty(work.getString("mail"))) {
+	 *     task.logmsg("Email is missing or empty");
+	 * }
+	 * 
+	 * // Check if multi-valued attribute has values
+	 * if (!system.isEmpty(work.getObject("memberOf"))) {
+	 *     var groups = work.getObject("memberOf");
+	 *     // Process groups
+	 * }
+	 * </pre>
+	 * 
+	 * @param value
+	 *            The value to check
+	 * @return true if the value is considered empty, false otherwise
+	 * @see #coalesce(Object, Object)
+	 * @since 10.1
+	 */
+	public boolean isEmpty(Object value) {
+		if (value == null)
+			return true;
+		if (value instanceof String)
+			return ((String) value).trim().isEmpty();
+		if (value instanceof Collection)
+			return ((Collection<?>) value).isEmpty();
+		if (value instanceof Map)
+			return ((Map<?, ?>) value).isEmpty();
+		if (value.getClass().isArray())
+			return Array.getLength(value) == 0;
+		return false;
+	}
+
+	/**
+	 * Returns the first Entry from an Iterator without consuming the entire
+	 * iterator.
+	 * <p>
+	 * This method is useful when you only need to check if a search returned any
+	 * results or when you want to process just the first result. It's more
+	 * efficient than converting the entire iterator to a list when you only need
+	 * one entry.
+	 * <p>
+	 * <b>Background:</b> IBM TDI connector searches return Iterator&lt;Entry&gt;.
+	 * Often you only need to check if results exist or get the first result. This
+	 * method provides a safe way to do that without null pointer exceptions.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Check if user exists
+	 * var iterator = conn.search("(uid=" + userId + ")");
+	 * var entry = system.firstEntry(iterator);
+	 * if (entry != null) {
+	 *     task.logmsg("User found: " + entry.getDN());
+	 * } else {
+	 *     task.logmsg("User not found");
+	 * }
+	 * </pre>
+	 * 
+	 * @param iterator
+	 *            The iterator to get the first entry from
+	 * @return The first Entry, or null if iterator is null or empty
+	 * @see #toList(Iterator)
+	 * @since 10.1
+	 */
+	public Entry firstEntry(Iterator<Entry> iterator) {
+		if (iterator == null)
+			return null;
+		try {
+			if (iterator.hasNext()) {
+				return iterator.next();
+			}
+		} catch (Exception e) {
+			lastError = e;
+		}
+		return null;
+	}
+
+	/**
+	 * Converts an Iterator of Entries to a List.
+	 * <p>
+	 * This method consumes the entire iterator and returns all entries as a List.
+	 * This is useful when you need to process entries multiple times, sort them,
+	 * or use List-specific operations.
+	 * <p>
+	 * <b>Warning:</b> This method loads all entries into memory. For large result
+	 * sets, consider processing the iterator directly instead of converting to a
+	 * list.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Get all users and count them
+	 * var iterator = conn.search("(objectClass=person)");
+	 * var entries = system.toList(iterator);
+	 * task.logmsg("Found " + entries.size() + " users");
+	 * 
+	 * // Process entries multiple times
+	 * for (var i = 0; i &lt; entries.size(); i++) {
+	 *     var entry = entries.get(i);
+	 *     // First pass processing
+	 * }
+	 * for (var i = 0; i &lt; entries.size(); i++) {
+	 *     var entry = entries.get(i);
+	 *     // Second pass processing
+	 * }
+	 * </pre>
+	 * 
+	 * @param iterator
+	 *            The iterator to convert
+	 * @return List of all entries from the iterator (empty list if iterator is
+	 *         null)
+	 * @see #firstEntry(Iterator)
+	 * @since 10.1
+	 */
+	public List<Entry> toList(Iterator<Entry> iterator) {
+		List<Entry> result = new ArrayList<>();
+		if (iterator == null)
+			return result;
+
+		try {
+			while (iterator.hasNext()) {
+				Entry entry = iterator.next();
+				if (entry != null) {
+					result.add(entry);
+				}
+			}
+		} catch (Exception e) {
+			lastError = e;
+		}
+		return result;
+	}
+
+	/**
+	 * Gets an environment variable value.
+	 * <p>
+	 * This method provides access to system environment variables, which is useful
+	 * for configuration that varies between environments (dev, test, prod) without
+	 * modifying TDI properties files.
+	 * <p>
+	 * <b>Use Cases:</b>
+	 * <ul>
+	 * <li>Database connection strings</li>
+	 * <li>API endpoints that differ per environment</li>
+	 * <li>Credentials stored in environment variables</li>
+	 * <li>Feature flags</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Get database host from environment
+	 * var dbHost = system.getEnv("DATABASE_HOST");
+	 * if (dbHost == null) {
+	 *     dbHost = "localhost"; // fallback
+	 * }
+	 * 
+	 * // Use with coalesce for cleaner code
+	 * var apiUrl = system.coalesce(
+	 *     system.getEnv("API_URL"),
+	 *     "https://api.example.com"
+	 * );
+	 * </pre>
+	 * 
+	 * @param name
+	 *            The environment variable name
+	 * @return The environment variable value, or null if not set or on error
+	 * @see #getTDIProperty(String)
+	 * @see #coalesce(Object, Object)
+	 * @since 10.1
+	 */
+	public String getEnv(String name) {
+		if (name == null || name.isEmpty())
+			return null;
+
+		try {
+			return System.getenv(name);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Gets a required TDI property, throwing an exception if not set.
+	 * <p>
+	 * This method is useful for validating that critical configuration is present
+	 * before starting an AssemblyLine. It fails fast with a clear error message
+	 * rather than allowing the AL to run with missing configuration.
+	 * <p>
+	 * <b>Background:</b> Many TDI scripts require certain properties to be set.
+	 * Rather than checking for null throughout the script, this method validates
+	 * required properties at startup.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Validate required properties at AL startup
+	 * try {
+	 *     var ldapHost = system.requireConfig("ldap.host");
+	 *     var ldapPort = system.requireConfig("ldap.port");
+	 *     var baseDN = system.requireConfig("ldap.baseDN");
+	 *     
+	 *     // All required config present, continue
+	 *     task.logmsg("Configuration validated");
+	 * } catch (e) {
+	 *     task.logmsg("Configuration error: " + e.getMessage());
+	 *     system.abortAL("Missing required configuration");
+	 * }
+	 * </pre>
+	 * 
+	 * @param key
+	 *            The TDI property key
+	 * @return The property value (never null)
+	 * @throws Exception
+	 *             if the property identified by {@code key} is not set or is empty
+	 * @see #getTDIProperty(String)
+	 * @since 10.1
+	 */
+	public String requireConfig(String key) throws Exception {
+		String value = (String) getTDIProperty(key);
+		if (value == null || value.isEmpty()) {
+			throw new Exception("Required configuration missing: " + key);
+		}
+		return value;
+	}
+
+	/**
+	 * Processes a list in batches using a callback function.
+	 * <p>
+	 * This method is essential for handling large datasets efficiently. Instead of
+	 * processing all items at once (which can cause memory issues or overwhelm
+	 * target systems), it processes items in manageable batches.
+	 * <p>
+	 * <b>Use Cases:</b>
+	 * <ul>
+	 * <li>Bulk updates to target systems with rate limits</li>
+	 * <li>Processing large LDAP search results</li>
+	 * <li>Batch database operations</li>
+	 * <li>Memory-efficient processing of large datasets</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Process 1000 users in batches of 100
+	 * var users = system.toList(conn.search("(objectClass=person)"));
+	 * 
+	 * system.processInBatches(users, 100, new system.BatchProcessor({
+	 *     process: function(batch) {
+	 *         task.logmsg("Processing batch of " + batch.size() + " users");
+	 *         
+	 *         for (var i = 0; i &lt; batch.size(); i++) {
+	 *             var entry = batch.get(i);
+	 *             // Process each entry in batch
+	 *             targetConn.update(entry);
+	 *         }
+	 *         
+	 *         task.logmsg("Batch complete");
+	 *     }
+	 * }));
+	 * </pre>
+	 * @param <T>
+	 *            The type of elements in the list
+	 * 
+	 * @param list
+	 *            The list to process
+	 * @param batchSize
+	 *            Number of items per batch (must be &gt; 0)
+	 * @param processor
+	 *            The BatchProcessor callback to handle each batch
+	 * @see BatchProcessor
+	 * @since 10.1
+	 */
+	public <T> void processInBatches(List<T> list, int batchSize, BatchProcessor<T> processor) {
+		if (list == null || processor == null || batchSize <= 0)
+			return;
+
+		try {
+			List<T> batch = new ArrayList<T>();
+			for (int i = 0; i < list.size(); i++) {
+				batch.add(list.get(i));
+
+				if (batch.size() >= batchSize || i == list.size() - 1) {
+					processor.process(batch);
+					batch.clear();
+				}
+			}
+		} catch (Exception e) {
+			lastError = e;
+		}
+	}
+
+	/**
+	 * Interface for batch processing callbacks.
+	 * <p>
+	 * Implement this interface to define how each batch should be processed.
+	 *
+	 * @param <T> The type of elements in the batch
+	 * @see #processInBatches(List, int, BatchProcessor)
+	 * @since 10.1
+	 */
+	public interface BatchProcessor<T> {
+		/**
+		 * Process a batch of items.
+		 *
+		 * @param batch
+		 *            The batch to process
+		 * @throws Exception
+		 *             if batch processing fails for any item in the batch
+		 */
+		void process(List<T> batch) throws Exception;
+	}
+
+	/**
+	 * Measures and logs the execution time of an operation.
+	 * <p>
+	 * This method is useful for performance analysis and optimization. It executes
+	 * an operation, measures how long it takes, logs the duration, and returns the
+	 * result.
+	 * <p>
+	 * <b>Use Cases:</b>
+	 * <ul>
+	 * <li>Identifying slow operations in AssemblyLines</li>
+	 * <li>Performance testing different approaches</li>
+	 * <li>Monitoring production performance</li>
+	 * <li>Debugging timeout issues</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Measure LDAP search performance
+	 * var results = system.measureTime(
+	 *     new java.util.concurrent.Callable({
+	 *         call: function() {
+	 *             return conn.search("(objectClass=person)");
+	 *         }
+	 *     }),
+	 *     "LDAP Search"
+	 * );
+	 * // Log output: "LDAP Search took 1234ms"
+	 * 
+	 * // Measure complex operation
+	 * system.measureTime(
+	 *     new java.util.concurrent.Callable({
+	 *         call: function() {
+	 *             // Complex processing
+	 *             for (var i = 0; i &lt; 1000; i++) {
+	 *                 // Do work
+	 *             }
+	 *             return null;
+	 *         }
+	 *     }),
+	 *     "Complex Processing"
+	 * );
+	 * </pre>
+	 *
+	 * @param <T>
+	 *            The type of result returned by the operation
+	 * @param operation
+	 *            The operation to measure (as a Callable)
+	 * @param label
+	 *            A descriptive label for the log message
+	 * @return The result of the operation, or null if it throws an exception
+	 * @since 10.1
+	 */
+	public <T> T measureTime(java.util.concurrent.Callable<T> operation, String label) {
+		long startTime = System.currentTimeMillis();
+		T result = null;
+
+		try {
+			result = operation.call();
+		} catch (Exception e) {
+			lastError = e;
+		} finally {
+			long elapsed = System.currentTimeMillis() - startTime;
+			getServer().getLog().info(label + " took " + elapsed + "ms");
+		}
+
+		return result;
+	}
+
+	/**
+	 * Builds an LDAP filter with proper value escaping.
+	 * <p>
+	 * This method constructs LDAP search filters while automatically escaping
+	 * special characters in values. This prevents LDAP injection attacks and
+	 * ensures filters work correctly with values containing special characters.
+	 * <p>
+	 * <b>Supported Operators:</b>
+	 * <ul>
+	 * <li>"equals" or "=" → (attr=value)</li>
+	 * <li>"contains" or "~=" → (attr=*value*)</li>
+	 * <li>"startswith" → (attr=value*)</li>
+	 * <li>"endswith" → (attr=*value)</li>
+	 * <li>"present" → (attr=*)</li>
+	 * </ul>
+	 * <p>
+	 * <b>Special Characters Escaped:</b> \ * ( ) \0
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Simple equality filter
+	 * var filter = system.buildLDAPFilter("uid", "equals", "jsmith");
+	 * // Result: "(uid=jsmith)"
+	 * 
+	 * // Contains filter
+	 * var filter = system.buildLDAPFilter("cn", "contains", "John");
+	 * // Result: "(cn=*John*)"
+	 * 
+	 * // Handles special characters safely
+	 * var filter = system.buildLDAPFilter("cn", "equals", "Smith (Admin)");
+	 * // Result: "(cn=Smith \\28Admin\\29)" - parentheses escaped
+	 * 
+	 * // Build complex filter
+	 * var f1 = system.buildLDAPFilter("givenName", "equals", firstName);
+	 * var f2 = system.buildLDAPFilter("sn", "equals", lastName);
+	 * var complexFilter = "(&amp;" + f1 + f2 + ")";
+	 * </pre>
+	 * 
+	 * @param attribute
+	 *            The LDAP attribute name
+	 * @param operator
+	 *            The comparison operator (equals, contains, startswith, endswith,
+	 *            present)
+	 * @param value
+	 *            The value to search for (will be escaped automatically)
+	 * @return The LDAP filter string, or null if parameters are invalid
+	 * @since 10.1
+	 */
+	public String buildLDAPFilter(String attribute, String operator, String value) {
+		if (attribute == null || operator == null || value == null)
+			return null;
+
+		try {
+			String escapedValue = escapeLDAPFilterValue(value);
+
+			switch (operator.toLowerCase()) {
+			case "equals":
+			case "=":
+				return "(" + attribute + "=" + escapedValue + ")";
+			case "contains":
+			case "~=":
+				return "(" + attribute + "=*" + escapedValue + "*)";
+			case "startswith":
+				return "(" + attribute + "=" + escapedValue + "*)";
+			case "endswith":
+				return "(" + attribute + "=*" + escapedValue + ")";
+			case "present":
+				return "(" + attribute + "=*)";
+			default:
+				return "(" + attribute + operator + escapedValue + ")";
+			}
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Escapes special characters in LDAP filter values according to RFC 4515.
+	 * <p>
+	 * This is a helper method used by {@link #buildLDAPFilter}. Special characters
+	 * that require escaping: \ * ( ) \0
+	 * 
+	 * @param value
+	 *            The value to escape
+	 * @return The escaped value
+	 */
+	private String escapeLDAPFilterValue(String value) {
+		if (value == null)
+			return "";
+
+		return value.replace("\\", "\\5c").replace("*", "\\2a").replace("(", "\\28").replace(")", "\\29")
+				.replace("\0", "\\00");
+	}
+
+	// ========================================================================
+	// Phase 3: Filter Conversion Methods
+	// ========================================================================
+	// Convert between LDAP filters and other query formats (SQL, SCIM, REST,
+	// GraphQL). Includes filter validation, optimization, and builder utilities.
+	// ========================================================================
+
+	/**
+	 * Converts an LDAP filter to a SQL WHERE clause.
+	 * <p>
+	 * This method enables connector switching between LDAP and JDBC sources by
+	 * translating LDAP filter syntax to SQL WHERE clause syntax. It handles
+	 * logical operators (AND, OR, NOT) and common comparison operators.
+	 * <p>
+	 * <b>Background:</b> When migrating from LDAP to database backends or
+	 * implementing hybrid identity stores, you need to translate search criteria
+	 * between formats. This method automates that translation.
+	 * <p>
+	 * <b>Supported Conversions:</b>
+	 * <ul>
+	 * <li>(&...) -> AND</li>
+	 * <li>(|...) -> OR</li>
+	 * <li>(!...) -> NOT</li>
+	 * <li>(attr=value) -> attr = 'value'</li>
+	 * <li>(attr=*value*) -> attr LIKE '%value%'</li>
+	 * <li>(attr=value*) -> attr LIKE 'value%'</li>
+	 * <li>(attr=*value) -> attr LIKE '%value'</li>
+	 * <li>(attr=*) → attr IS NOT NULL</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * // Convert LDAP filter to SQL
+	 * var ldapFilter = "(&amp;(objectClass=person)(mail=*@example.com))";
+	 * var sqlWhere = system.ldapFilterToSQL(ldapFilter);
+	 * // Result: "(objectClass = 'person' AND mail LIKE '%@example.com')"
+	 * 
+	 * // Use in JDBC query
+	 * var sql = "SELECT * FROM users WHERE " + sqlWhere;
+	 * </pre>
+	 * 
+	 * @param ldapFilter
+	 *            The LDAP filter to convert
+	 * @return SQL WHERE clause, or null if conversion fails
+	 * @see #sqlWhereToLDAPFilter(String)
+	 * @see #validateLDAPFilter(String)
+	 * @since 10.1
+	 */
+	public String ldapFilterToSQL(String ldapFilter) {
+		if (ldapFilter == null || ldapFilter.isEmpty())
+			return null;
+
+		try {
+			return parseLDAPFilterToSQL(ldapFilter);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Helper method to recursively parse LDAP filter to SQL.
+	 */
+	private String parseLDAPFilterToSQL(String filter) {
+		filter = filter.trim();
+		if (filter.startsWith("(") && filter.endsWith(")")) {
+			filter = filter.substring(1, filter.length() - 1);
+		}
+
+		// Handle logical operators
+		if (filter.startsWith("&")) {
+			return parseLogicalOperatorToSQL(filter.substring(1), "AND");
+		} else if (filter.startsWith("|")) {
+			return parseLogicalOperatorToSQL(filter.substring(1), "OR");
+		} else if (filter.startsWith("!")) {
+			return "NOT (" + parseLDAPFilterToSQL(filter.substring(1)) + ")";
+		}
+
+		// Handle simple filter
+		return parseSimpleFilterToSQL(filter);
+	}
+
+	/**
+	 * Helper method to parse simple LDAP filter to SQL.
+	 */
+	private String parseSimpleFilterToSQL(String filter) {
+		if (filter.contains("=")) {
+			String[] parts = filter.split("=", 2);
+			String attr = parts[0].trim();
+			String value = parts[1].trim();
+
+			if (value.equals("*")) {
+				return attr + " IS NOT NULL";
+			} else if (value.startsWith("*") && value.endsWith("*")) {
+				return attr + " LIKE '%" + value.substring(1, value.length() - 1).replace("'", "''") + "%'";
+			} else if (value.startsWith("*")) {
+				return attr + " LIKE '%" + value.substring(1).replace("'", "''") + "'";
+			} else if (value.endsWith("*")) {
+				return attr + " LIKE '" + value.substring(0, value.length() - 1).replace("'", "''") + "%'";
+			} else {
+				return attr + " = '" + value.replace("'", "''") + "'";
+			}
+		}
+
+		return filter;
+	}
+
+	/**
+	 * Helper method to parse logical operators in LDAP filter to SQL.
+	 */
+	private String parseLogicalOperatorToSQL(String filter, String operator) {
+		List<String> conditions = new ArrayList<>();
+		int depth = 0;
+		StringBuilder current = new StringBuilder();
+
+		for (char c : filter.toCharArray()) {
+			if (c == '(')
+				depth++;
+			else if (c == ')')
+				depth--;
+
+			current.append(c);
+
+			if (depth == 0 && current.length() > 0) {
+				conditions.add(parseLDAPFilterToSQL(current.toString()));
+				current = new StringBuilder();
+			}
+		}
+
+		return "(" + String.join(" " + operator + " ", conditions) + ")";
+	}
+
+	/**
+	 * Converts a SQL WHERE clause to an LDAP filter.
+	 * <p>
+	 * This method is the reverse of {@link #ldapFilterToSQL}, enabling translation
+	 * from SQL syntax back to LDAP filter syntax. Useful when building LDAP queries
+	 * from SQL-based search criteria.
+	 * <p>
+	 * <b>Supported Conversions:</b>
+	 * <ul>
+	 * <li>AND → (&amp;...)</li>
+	 * <li>OR → (|...)</li>
+	 * <li>NOT → (!...)</li>
+	 * <li>attr = 'value' → (attr=value)</li>
+	 * <li>attr LIKE '%value%' → (attr=*value*)</li>
+	 * <li>attr LIKE 'value%' → (attr=value*)</li>
+	 * <li>attr LIKE '%value' → (attr=*value)</li>
+	 * <li>attr IS NOT NULL → (attr=*)</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var sqlWhere = "objectClass = 'person' AND mail LIKE '%@example.com'";
+	 * var ldapFilter = system.sqlWhereToLDAPFilter(sqlWhere);
+	 * // Result: "(&amp;(objectClass=person)(mail=*@example.com))"
+	 * </pre>
+	 * 
+	 * @param sqlWhere
+	 *            The SQL WHERE clause to convert
+	 * @return LDAP filter, or null if conversion fails
+	 * @see #ldapFilterToSQL(String)
+	 * @since 10.1
+	 */
+	public String sqlWhereToLDAPFilter(String sqlWhere) {
+		if (sqlWhere == null || sqlWhere.isEmpty())
+			return null;
+
+		try {
+			return parseSQLToLDAPFilter(sqlWhere);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Helper method to parse SQL WHERE clause to LDAP filter.
+	 */
+	private String parseSQLToLDAPFilter(String sql) {
+		sql = sql.trim();
+
+		// Handle AND/OR operators
+		if (sql.toUpperCase().contains(" AND ")) {
+			String[] parts = sql.split("(?i)\\s+AND\\s+");
+			StringBuilder ldap = new StringBuilder("(&");
+			for (String part : parts) {
+				ldap.append(parseSQLToLDAPFilter(part.trim()));
+			}
+			ldap.append(")");
+			return ldap.toString();
+		} else if (sql.toUpperCase().contains(" OR ")) {
+			String[] parts = sql.split("(?i)\\s+OR\\s+");
+			StringBuilder ldap = new StringBuilder("(|");
+			for (String part : parts) {
+				ldap.append(parseSQLToLDAPFilter(part.trim()));
+			}
+			ldap.append(")");
+			return ldap.toString();
+		}
+
+		// Handle simple conditions
+		if (sql.contains("=")) {
+			String[] parts = sql.split("=", 2);
+			String attr = parts[0].trim();
+			String value = parts[1].trim().replace("'", "");
+			return "(" + attr + "=" + value + ")";
+		} else if (sql.toUpperCase().contains(" LIKE ")) {
+			String[] parts = sql.split("(?i)\\s+LIKE\\s+", 2);
+			String attr = parts[0].trim();
+			String value = parts[1].trim().replace("'", "").replace("%", "*");
+			return "(" + attr + "=" + value + ")";
+		} else if (sql.toUpperCase().contains(" IS NOT NULL")) {
+			String attr = sql.split("(?i)\\s+IS\\s+NOT\\s+NULL")[0].trim();
+			return "(" + attr + "=*)";
+		}
+
+		return sql;
+	}
+
+	/**
+	 * Converts a SCIM filter to an LDAP filter.
+	 * <p>
+	 * SCIM (System for Cross-domain Identity Management) is a modern standard for
+	 * identity provisioning. This method translates SCIM filter syntax to LDAP
+	 * filter syntax, enabling integration with SCIM-based identity systems.
+	 * <p>
+	 * <b>Supported SCIM Operators:</b>
+	 * <ul>
+	 * <li>eq (equals) → =</li>
+	 * <li>ne (not equals) → !(=)</li>
+	 * <li>co (contains) → =*value*</li>
+	 * <li>sw (starts with) → =value*</li>
+	 * <li>ew (ends with) → =*value</li>
+	 * <li>pr (present) → =*</li>
+	 * <li>gt/ge (greater than/equal) → &gt;=</li>
+	 * <li>lt/le (less than/equal) → &lt;=</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var scimFilter = 'userName eq "bjensen" and emails.value co "@example.com"';
+	 * var ldapFilter = system.scimFilterToLDAP(scimFilter);
+	 * // Result: "(&amp;(userName=bjensen)(emails.value=*@example.com*))"
+	 * </pre>
+	 * 
+	 * @param scimFilter
+	 *            The SCIM filter to convert
+	 * @return LDAP filter, or null if conversion fails
+	 * @see #ldapFilterToSCIM(String)
+	 * @since 10.1
+	 */
+	public String scimFilterToLDAP(String scimFilter) {
+		if (scimFilter == null || scimFilter.isEmpty())
+			return null;
+
+		try {
+			return parseSCIMToLDAP(scimFilter);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Helper method to parse SCIM filter to LDAP.
+	 */
+	private String parseSCIMToLDAP(String scim) {
+		scim = scim.trim();
+
+		// Handle logical operators
+		if (scim.toLowerCase().contains(" and ")) {
+			String[] parts = scim.split("(?i)\\s+and\\s+");
+			StringBuilder ldap = new StringBuilder("(&");
+			for (String part : parts) {
+				ldap.append(parseSCIMToLDAP(part.trim()));
+			}
+			ldap.append(")");
+			return ldap.toString();
+		} else if (scim.toLowerCase().contains(" or ")) {
+			String[] parts = scim.split("(?i)\\s+or\\s+");
+			StringBuilder ldap = new StringBuilder("(|");
+			for (String part : parts) {
+				ldap.append(parseSCIMToLDAP(part.trim()));
+			}
+			ldap.append(")");
+			return ldap.toString();
+		}
+
+		// Handle SCIM operators
+		String[] operators = { "eq", "ne", "co", "sw", "ew", "pr", "gt", "ge", "lt", "le" };
+
+		for (String op : operators) {
+			if (scim.toLowerCase().contains(" " + op + " ")) {
+				String[] parts = scim.split("(?i)\\s+" + op + "\\s+", 2);
+				String attr = parts[0].trim();
+				String value = parts.length > 1 ? parts[1].trim().replace("\"", "") : "";
+
+				switch (op.toLowerCase()) {
+				case "eq":
+					return "(" + attr + "=" + value + ")";
+				case "ne":
+					return "(!(" + attr + "=" + value + "))";
+				case "co":
+					return "(" + attr + "=*" + value + "*)";
+				case "sw":
+					return "(" + attr + "=" + value + "*)";
+				case "ew":
+					return "(" + attr + "=*" + value + ")";
+				case "pr":
+					return "(" + attr + "=*)";
+				case "gt":
+				case "ge":
+					return "(" + attr + ">=" + value + ")";
+				case "lt":
+				case "le":
+					return "(" + attr + "<=" + value + ")";
+				}
+			}
+		}
+
+		return scim;
+	}
+
+	/**
+	 * Converts an LDAP filter to a SCIM filter.
+	 * <p>
+	 * This method is the reverse of {@link #scimFilterToLDAP}, translating LDAP
+	 * filter syntax to SCIM filter syntax for integration with SCIM-based systems.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var ldapFilter = "(&amp;(userName=bjensen)(mail=*@example.com*))";
+	 * var scimFilter = system.ldapFilterToSCIM(ldapFilter);
+	 * // Result: 'userName eq "bjensen" and mail co "@example.com"'
+	 * </pre>
+	 * 
+	 * @param ldapFilter
+	 *            The LDAP filter to convert
+	 * @return SCIM filter, or null if conversion fails
+	 * @see #scimFilterToLDAP(String)
+	 * @since 10.1
+	 */
+	public String ldapFilterToSCIM(String ldapFilter) {
+		if (ldapFilter == null || ldapFilter.isEmpty())
+			return null;
+
+		try {
+			return parseLDAPToSCIM(ldapFilter);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Helper method to parse LDAP filter to SCIM.
+	 */
+	private String parseLDAPToSCIM(String filter) {
+		filter = filter.trim();
+		if (filter.startsWith("(") && filter.endsWith(")")) {
+			filter = filter.substring(1, filter.length() - 1);
+		}
+
+		// Handle logical operators
+		if (filter.startsWith("&")) {
+			return parseLogicalOperatorToSCIM(filter.substring(1), "and");
+		} else if (filter.startsWith("|")) {
+			return parseLogicalOperatorToSCIM(filter.substring(1), "or");
+		} else if (filter.startsWith("!")) {
+			return "not (" + parseLDAPToSCIM(filter.substring(1)) + ")";
+		}
+
+		// Handle simple filter
+		if (filter.contains("=")) {
+			String[] parts = filter.split("=", 2);
+			String attr = parts[0].trim();
+			String value = parts[1].trim();
+
+			if (value.equals("*")) {
+				return attr + " pr";
+			} else if (value.startsWith("*") && value.endsWith("*")) {
+				return attr + " co \"" + value.substring(1, value.length() - 1) + "\"";
+			} else if (value.startsWith("*")) {
+				return attr + " ew \"" + value.substring(1) + "\"";
+			} else if (value.endsWith("*")) {
+				return attr + " sw \"" + value.substring(0, value.length() - 1) + "\"";
+			} else {
+				return attr + " eq \"" + value + "\"";
+			}
+		}
+
+		return filter;
+	}
+
+	/**
+	 * Helper method to parse logical operators in LDAP filter to SCIM.
+	 */
+	private String parseLogicalOperatorToSCIM(String filter, String operator) {
+		List<String> conditions = new ArrayList<>();
+		int depth = 0;
+		StringBuilder current = new StringBuilder();
+
+		for (char c : filter.toCharArray()) {
+			if (c == '(')
+				depth++;
+			else if (c == ')')
+				depth--;
+
+			current.append(c);
+
+			if (depth == 0 && current.length() > 0) {
+				conditions.add(parseLDAPToSCIM(current.toString()));
+				current = new StringBuilder();
+			}
+		}
+
+		return String.join(" " + operator + " ", conditions);
+	}
+
+	/**
+	 * Converts an LDAP filter to REST API query parameters.
+	 * <p>
+	 * This method extracts attribute-value pairs from an LDAP filter and returns
+	 * them as a Map suitable for building REST API query strings. Useful for
+	 * translating LDAP searches to REST API calls.
+	 * <p>
+	 * <b>Note:</b> Complex logical operators are flattened - only simple
+	 * attribute=value pairs are extracted.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var ldapFilter = "(&amp;(objectClass=person)(mail=user@example.com))";
+	 * var queryParams = system.ldapFilterToQueryParams(ldapFilter);
+	 * // Result: {objectClass: "person", mail: "user@example.com"}
+	 * 
+	 * // Build URL
+	 * var url = "https://api.example.com/users?";
+	 * for (var key in queryParams) {
+	 *     url += key + "=" + encodeURIComponent(queryParams[key]) + "&amp;";
+	 * }
+	 * </pre>
+	 * 
+	 * @param ldapFilter
+	 *            The LDAP filter to convert
+	 * @return Map of query parameters (empty map if conversion fails)
+	 * @see #queryParamsToLDAPFilter(Map)
+	 * @since 10.1
+	 */
+	public Map<String, String> ldapFilterToQueryParams(String ldapFilter) {
+		Map<String, String> params = new HashMap<>();
+		if (ldapFilter == null || ldapFilter.isEmpty())
+			return params;
+
+		try {
+			parseLDAPToQueryParams(ldapFilter, params);
+		} catch (Exception e) {
+			lastError = e;
+		}
+
+		return params;
+	}
+
+	/**
+	 * Helper method to parse LDAP filter to query parameters.
+	 */
+	private void parseLDAPToQueryParams(String filter, Map<String, String> params) {
+		filter = filter.trim();
+		if (filter.startsWith("(") && filter.endsWith(")")) {
+			filter = filter.substring(1, filter.length() - 1);
+		}
+
+		// Skip logical operators for simple query params
+		if (filter.startsWith("&") || filter.startsWith("|")) {
+			int depth = 0;
+			StringBuilder current = new StringBuilder();
+
+			for (char c : filter.substring(1).toCharArray()) {
+				if (c == '(')
+					depth++;
+				else if (c == ')')
+					depth--;
+
+				current.append(c);
+
+				if (depth == 0 && current.length() > 0) {
+					parseLDAPToQueryParams(current.toString(), params);
+					current = new StringBuilder();
+				}
+			}
+			return;
+		}
+
+		// Parse simple filter
+		if (filter.contains("=")) {
+			String[] parts = filter.split("=", 2);
+			String attr = parts[0].trim();
+			String value = parts[1].trim();
+
+			if (!value.equals("*")) {
+				value = value.replace("*", "");
+				params.put(attr, value);
+			}
+		}
+	}
+
+	/**
+	 * Converts REST API query parameters to an LDAP filter.
+	 * <p>
+	 * This method builds an LDAP filter from a Map of query parameters, combining
+	 * them with AND logic. Useful for translating REST API searches to LDAP
+	 * queries.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var params = new java.util.HashMap();
+	 * params.put("objectClass", "person");
+	 * params.put("mail", "user@example.com");
+	 * 
+	 * var ldapFilter = system.queryParamsToLDAPFilter(params);
+	 * // Result: "(&amp;(objectClass=person)(mail=user@example.com))"
+	 * </pre>
+	 * 
+	 * @param params
+	 *            Map of query parameters
+	 * @return LDAP filter, or null if params is null/empty
+	 * @see #ldapFilterToQueryParams(String)
+	 * @since 10.1
+	 */
+	public String queryParamsToLDAPFilter(Map<String, String> params) {
+		if (params == null || params.isEmpty())
+			return null;
+
+		try {
+			if (params.size() == 1) {
+				Map.Entry<String, String> entry = params.entrySet().iterator().next();
+				return "(" + entry.getKey() + "=" + entry.getValue() + ")";
+			}
+
+			StringBuilder filter = new StringBuilder("(&");
+			for (Map.Entry<String, String> entry : params.entrySet()) {
+				filter.append("(").append(entry.getKey()).append("=").append(entry.getValue()).append(")");
+			}
+			filter.append(")");
+
+			return filter.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Validates an LDAP filter for correct syntax.
+	 * <p>
+	 * This method checks if an LDAP filter has valid syntax by verifying balanced
+	 * parentheses and valid operators. Use this before executing searches to catch
+	 * syntax errors early.
+	 * <p>
+	 * <b>Validation Checks:</b>
+	 * <ul>
+	 * <li>Balanced parentheses</li>
+	 * <li>Valid logical operators (&amp;, |, !)</li>
+	 * <li>Valid comparison operators (=, &gt;=, &lt;=, ~=, :=)</li>
+	 * <li>Proper filter structure</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var filter = "(&amp;(objectClass=person)(mail=*))";
+	 * if (system.validateLDAPFilter(filter)) {
+	 *     var results = conn.search(filter);
+	 * } else {
+	 *     task.logmsg("Invalid LDAP filter: " + filter);
+	 * }
+	 * </pre>
+	 * 
+	 * @param filter
+	 *            The LDAP filter to validate
+	 * @return true if filter is valid, false otherwise
+	 * @see #optimizeLDAPFilter(String)
+	 * @since 10.1
+	 */
+	public boolean validateLDAPFilter(String filter) {
+		if (filter == null || filter.isEmpty())
+			return false;
+
+		try {
+			// Check balanced parentheses
+			int depth = 0;
+			for (char c : filter.toCharArray()) {
+				if (c == '(')
+					depth++;
+				else if (c == ')')
+					depth--;
+				if (depth < 0)
+					return false;
+			}
+			if (depth != 0)
+				return false;
+
+			// Check valid operators
+			String trimmed = filter.trim();
+			if (trimmed.startsWith("(") && trimmed.endsWith(")")) {
+				String inner = trimmed.substring(1, trimmed.length() - 1);
+
+				// Check for valid logical operators
+				if (inner.startsWith("&") || inner.startsWith("|") || inner.startsWith("!")) {
+					return true;
+				}
+
+				// Check for valid comparison
+				if (inner.contains("=") || inner.contains(">=") || inner.contains("<=") || inner.contains("~=")
+						|| inner.contains(":=")) {
+					return true;
+				}
+			}
+
+			return false;
+		} catch (Exception e) {
+			lastError = e;
+			return false;
+		}
+	}
+
+	/**
+	 * Optimizes an LDAP filter by removing redundant constructs.
+	 * <p>
+	 * This method simplifies LDAP filters by removing unnecessary parentheses,
+	 * single-condition AND/OR operators, and double negations. This can improve
+	 * search performance and readability.
+	 * <p>
+	 * <b>Optimizations Applied:</b>
+	 * <ul>
+	 * <li>(&amp;(condition)) → (condition)</li>
+	 * <li>(|(condition)) → (condition)</li>
+	 * <li>(!(!(condition))) → (condition)</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var filter = "(&amp;(objectClass=person))";
+	 * var optimized = system.optimizeLDAPFilter(filter);
+	 * // Result: "(objectClass=person)"
+	 * </pre>
+	 * 
+	 * @param filter
+	 *            The LDAP filter to optimize
+	 * @return Optimized filter, or original filter if optimization fails
+	 * @see #validateLDAPFilter(String)
+	 * @since 10.1
+	 */
+	public String optimizeLDAPFilter(String filter) {
+		if (filter == null || filter.isEmpty())
+			return filter;
+
+		try {
+			filter = filter.trim();
+
+			// Optimize single-condition AND/OR
+			if (filter.matches("\\(&\\([^)]+\\)\\)")) {
+				// (&(condition)) -> (condition)
+				return filter.substring(2, filter.length() - 1);
+			}
+			if (filter.matches("\\(\\|\\([^)]+\\)\\)")) {
+				// (|(condition)) -> (condition)
+				return filter.substring(2, filter.length() - 1);
+			}
+
+			// Remove double negation
+			if (filter.matches("\\(!\\(!.*\\)\\)")) {
+				// (!(!(condition))) -> (condition)
+				return filter.substring(3, filter.length() - 2);
+			}
+
+			return filter;
+		} catch (Exception e) {
+			lastError = e;
+			return filter;
+		}
+	}
+
+	/**
+	 * Combines multiple LDAP filters with AND logic.
+	 * <p>
+	 * This method is a convenient builder for creating complex LDAP filters by
+	 * combining multiple conditions with AND logic. It automatically handles the
+	 * proper syntax and parentheses.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var filter1 = "(objectClass=person)";
+	 * var filter2 = "(mail=*@example.com)";
+	 * var filter3 = "(cn=John*)";
+	 * 
+	 * var combined = system.buildAndFilter(filter1, filter2, filter3);
+	 * // Result: "(&amp;(objectClass=person)(mail=*@example.com)(cn=John*))"
+	 * </pre>
+	 * 
+	 * @param filters
+	 *            Variable number of LDAP filters to combine
+	 * @return Combined filter with AND logic, or null if no filters provided
+	 * @see #buildOrFilter(String...)
+	 * @see #buildNotFilter(String)
+	 * @since 10.1
+	 */
+	public String buildAndFilter(String... filters) {
+		if (filters == null || filters.length == 0)
+			return null;
+
+		try {
+			if (filters.length == 1)
+				return filters[0];
+
+			StringBuilder result = new StringBuilder("(&");
+			for (String filter : filters) {
+				if (filter != null && !filter.isEmpty()) {
+					result.append(filter);
+				}
+			}
+			result.append(")");
+
+			return result.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Combines multiple LDAP filters with OR logic.
+	 * <p>
+	 * This method is a convenient builder for creating complex LDAP filters by
+	 * combining multiple conditions with OR logic. It automatically handles the
+	 * proper syntax and parentheses.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var filter1 = "(mail=*@example.com)";
+	 * var filter2 = "(mail=*@test.com)";
+	 * var filter3 = "(mail=*@demo.com)";
+	 * 
+	 * var combined = system.buildOrFilter(filter1, filter2, filter3);
+	 * // Result: "(|(mail=*@example.com)(mail=*@test.com)(mail=*@demo.com))"
+	 * </pre>
+	 * 
+	 * @param filters
+	 *            Variable number of LDAP filters to combine
+	 * @return Combined filter with OR logic, or null if no filters provided
+	 * @see #buildAndFilter(String...)
+	 * @see #buildNotFilter(String)
+	 * @since 10.1
+	 */
+	public String buildOrFilter(String... filters) {
+		if (filters == null || filters.length == 0)
+			return null;
+
+		try {
+			if (filters.length == 1)
+				return filters[0];
+
+			StringBuilder result = new StringBuilder("(|");
+			for (String filter : filters) {
+				if (filter != null && !filter.isEmpty()) {
+					result.append(filter);
+				}
+			}
+			result.append(")");
+
+			return result.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Negates an LDAP filter with NOT logic.
+	 * <p>
+	 * This method wraps a filter with NOT logic, creating the inverse of the
+	 * condition. Useful for exclusion filters.
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var filter = "(objectClass=person)";
+	 * var notFilter = system.buildNotFilter(filter);
+	 * // Result: "(!(objectClass=person))"
+	 * 
+	 * // Find all non-person entries
+	 * var results = conn.search(notFilter);
+	 * </pre>
+	 * 
+	 * @param filter
+	 *            The LDAP filter to negate
+	 * @return Negated filter, or null if filter is null/empty
+	 * @see #buildAndFilter(String...)
+	 * @see #buildOrFilter(String...)
+	 * @since 10.1
+	 */
+	public String buildNotFilter(String filter) {
+		if (filter == null || filter.isEmpty())
+			return null;
+		return "(!" + filter + ")";
+	}
+
+	/**
+	 * Converts a GraphQL filter to an LDAP filter.
+	 * <p>
+	 * This method provides basic support for translating GraphQL filter syntax to
+	 * LDAP filter syntax. GraphQL is increasingly used in modern APIs, and this
+	 * method enables integration with GraphQL-based identity systems.
+	 * <p>
+	 * <b>Note:</b> This is a simplified implementation that handles basic patterns.
+	 * Full GraphQL filter support would require a complete JSON parser.
+	 * <p>
+	 * <b>Supported Patterns:</b>
+	 * <ul>
+	 * <li>{field: {contains: "value"}} → (field=*value*)</li>
+	 * <li>{field: {equals: "value"}} → (field=value)</li>
+	 * </ul>
+	 * <p>
+	 * <b>Example:</b>
+	 * 
+	 * <pre>
+	 * var graphQLFilter = "{email: {contains: '@example.com'}}";
+	 * var ldapFilter = system.graphQLFilterToLDAP(graphQLFilter);
+	 * // Result: "(email=*@example.com*)"
+	 * </pre>
+	 * 
+	 * @param graphQLFilter
+	 *            The GraphQL filter to convert
+	 * @return LDAP filter, or null if conversion fails
+	 * @since 10.1
+	 */
+	public String graphQLFilterToLDAP(String graphQLFilter) {
+		if (graphQLFilter == null || graphQLFilter.isEmpty())
+			return null;
+
+		try {
+			return parseGraphQLToLDAP(graphQLFilter);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Helper method to parse GraphQL filter to LDAP.
+	 */
+	private String parseGraphQLToLDAP(String graphQL) {
+		if (graphQL.contains("contains")) {
+			String field = extractGraphQLField(graphQL);
+			String value = extractGraphQLValue(graphQL);
+			return "(" + field + "=*" + value + "*)";
+		} else if (graphQL.contains("equals")) {
+			String field = extractGraphQLField(graphQL);
+			String value = extractGraphQLValue(graphQL);
+			return "(" + field + "=" + value + ")";
+		}
+
+		return graphQL;
+	}
+
+	/**
+	 * Helper method to extract field name from GraphQL filter.
+	 */
+	private String extractGraphQLField(String graphQL) {
+		int start = graphQL.indexOf("{") + 1;
+		int end = graphQL.indexOf(":");
+		if (start > 0 && end > start) {
+			return graphQL.substring(start, end).trim();
+		}
+		return "";
+	}
+
+	/**
+	 * Helper method to extract value from GraphQL filter.
+	 */
+	private String extractGraphQLValue(String graphQL) {
+		int start = graphQL.lastIndexOf(":") + 1;
+		int end = graphQL.lastIndexOf("}");
+		if (start > 0 && end > start) {
+			return graphQL.substring(start, end).trim().replace("\"", "").replace("'", "");
+		}
+		return "";
+	}
+
+	// ========================================================================
+	// Java Reflection and Type Conversion Methods
+	// ========================================================================
+
+	/**
+	 * Convert Java types that are problematic in JavaScript to compatible types.
+	 * This method handles Java Long and other numeric types that exceed JavaScript's
+	 * safe integer range (Number.MAX_SAFE_INTEGER = 2^53 - 1).
+	 * 
+	 * @param obj The object to convert
+	 * @return JavaScript-compatible representation of the object
+	 */
+	private Object convertToJavaScriptCompatible(Object obj) {
+		if (obj == null) {
+			return null;
+		}
+		
+		// Convert Long to String (JavaScript can't handle 64-bit integers accurately)
+		if (obj instanceof Long) {
+			return obj.toString();
+		}
+		
+		// Convert other large numbers to strings to prevent precision loss
+		if (obj instanceof Number) {
+			long longValue = ((Number) obj).longValue();
+			// JavaScript safe integer range: -(2^53 - 1) to (2^53 - 1)
+			if (longValue > 9007199254740991L || longValue < -9007199254740991L) {
+				return obj.toString();
+			}
+		}
+		
+		return obj;
+	}
+
+	/**
+	 * Safely invoke a method on a Java object and convert the result to a 
+	 * JavaScript-compatible type. This is particularly useful for methods that 
+	 * return Java Long or other types that JavaScript cannot handle directly.
+	 * <p>
+	 * This method eliminates the need for Apache Commons BeanUtils and provides
+	 * automatic type conversion for JavaScript compatibility.
+	 * <p>
+	 * <b>Example:</b>
+	 * <pre>
+	 * // Instead of using BeanUtils:
+	 * // importPackage(Packages.org.apache.commons.beanutils);
+	 * // myMethodUtils = new MethodUtils();
+	 * // myRequestID = myMethodUtils.invokeMethod(myRequest, "getID", null);
+	 * 
+	 * // Use this method:
+	 * var requestID = system.invokeMethodSafe(myRequest, "getID", null);
+	 * task.logmsg("Request ID: " + requestID); // Now JavaScript-compatible
+	 * </pre>
+	 * 
+	 * @param obj The object to invoke the method on
+	 * @param methodName The name of the method to invoke
+	 * @param args Optional array of arguments to pass to the method. Pass null for no arguments.
+	 * @return The method result converted to a JavaScript-compatible type
+	 * @throws Exception if the method invocation fails or the method does not exist
+	 */
+	public Object invokeMethodSafe(Object obj, String methodName, Object[] args) throws Exception {
+		if (obj == null) {
+			throw new IllegalArgumentException("Cannot invoke method on null object");
+		}
+		
+		if (methodName == null || methodName.trim().isEmpty()) {
+			throw new IllegalArgumentException("Method name cannot be null or empty");
+		}
+		
+		try {
+			Class<?> clazz = obj.getClass();
+			Method method;
+			Object result;
+			
+			if (args == null || args.length == 0) {
+				// No arguments - simple case
+				method = clazz.getMethod(methodName);
+				result = method.invoke(obj);
+			} else {
+				// With arguments - need to determine parameter types
+				Class<?>[] paramTypes = new Class<?>[args.length];
+				for (int i = 0; i < args.length; i++) {
+					if (args[i] == null) {
+						throw new IllegalArgumentException(
+							"Cannot determine type for null argument at index " + i);
+					}
+					paramTypes[i] = args[i].getClass();
+				}
+				method = clazz.getMethod(methodName, paramTypes);
+				result = method.invoke(obj, args);
+			}
+			
+			return convertToJavaScriptCompatible(result);
+			
+		} catch (NoSuchMethodException e) {
+			lastError = e;
+			throw new Exception("Method '" + methodName + "' not found on object of type " + 
+							  obj.getClass().getName(), e);
+		} catch (IllegalAccessException e) {
+			lastError = e;
+			throw new Exception("Cannot access method '" + methodName + "' on object of type " + 
+							  obj.getClass().getName(), e);
+		} catch (java.lang.reflect.InvocationTargetException e) {
+			lastError = e;
+			throw new Exception("Method '" + methodName + "' threw an exception: " + 
+							  e.getCause().getMessage(), e.getCause());
+		} catch (Exception e) {
+			lastError = e;
+			throw e;
+		}
+	}
+
+	/**
+	 * Get a property value from a Java object using reflection, with automatic
+	 * type conversion for JavaScript compatibility. This method follows JavaBean
+	 * naming conventions and tries both "get" and "is" prefixes.
+	 * <p>
+	 * <b>Example:</b>
+	 * <pre>
+	 * var id = system.getPropertySafe(myRequest, "id");
+	 * var active = system.getPropertySafe(myObject, "active"); // tries isActive()
+	 * </pre>
+	 * 
+	 * @param obj The object to get the property from
+	 * @param propertyName The property name (will try getPropertyName() or isPropertyName())
+	 * @return The property value converted to JavaScript-compatible type
+	 * @throws Exception if the property cannot be accessed
+	 */
+	public Object getPropertySafe(Object obj, String propertyName) throws Exception {
+		if (obj == null) {
+			throw new IllegalArgumentException("Cannot get property from null object");
+		}
+		
+		if (propertyName == null || propertyName.trim().isEmpty()) {
+			throw new IllegalArgumentException("Property name cannot be null or empty");
+		}
+		
+		// Capitalize first letter for getter method name
+		String capitalizedName = propertyName.substring(0, 1).toUpperCase() + 
+								propertyName.substring(1);
+		
+		try {
+			// Try standard getter first
+			String getterName = "get" + capitalizedName;
+			return invokeMethodSafe(obj, getterName, null);
+		} catch (Exception e) {
+			// Try boolean getter
+			try {
+				String isGetterName = "is" + capitalizedName;
+				return invokeMethodSafe(obj, isGetterName, null);
+			} catch (Exception e2) {
+				lastError = e2;
+				throw new Exception("Property '" + propertyName + "' not found on object of type " + 
+								  obj.getClass().getName() + 
+								  " (tried get" + capitalizedName + "() and is" + capitalizedName + "())", e2);
+			}
+		}
+	}
+
+	// ========================================================================
+	// Asynchronous Polling and Waiting Methods
+	// ========================================================================
+
+	/**
+	 * Wait for an object's property to change from a specific value, using
+	 * exponential backoff and timeout. This is useful for waiting on asynchronous
+	 * operations to complete.
+	 * <p>
+	 * The method polls the property value at increasing intervals (exponential backoff)
+	 * starting at 100ms and doubling up to a maximum of 5 seconds between checks.
+	 * <p>
+	 * <b>Example:</b>
+	 * <pre>
+	 * // Instead of:
+	 * // do {
+	 * //     system.sleep(1);
+	 * // } while (myRequest.getStatus() == com.ibm.itim.apps.Request.IN_PROCESS)
+	 * 
+	 * // Use:
+	 * var completed = system.waitForPropertyChange(
+	 *     myRequest,
+	 *     "status",
+	 *     com.ibm.itim.apps.Request.IN_PROCESS,
+	 *     60  // 60 second timeout
+	 * );
+	 * 
+	 * if (!completed) {
+	 *     task.logmsg("Request timed out");
+	 * } else {
+	 *     task.logmsg("Request completed with status: " + myRequest.getStatus());
+	 * }
+	 * </pre>
+	 * 
+	 * @param obj The object to monitor
+	 * @param propertyName The property name to check (e.g., "status")
+	 * @param unwantedValue The value to wait to change from
+	 * @param timeoutSeconds Maximum time to wait in seconds
+	 * @return true if value changed from unwantedValue, false if timeout occurred
+	 * @throws Exception if monitoring fails or is interrupted
+	 */
+	public boolean waitForPropertyChange(Object obj, String propertyName,
+										Object unwantedValue, int timeoutSeconds) throws Exception {
+		if (obj == null) {
+			throw new IllegalArgumentException("Cannot monitor null object");
+		}
+		
+		if (timeoutSeconds <= 0) {
+			throw new IllegalArgumentException("Timeout must be positive");
+		}
+		
+		long startTime = System.currentTimeMillis();
+		long timeoutMs = timeoutSeconds * 1000L;
+		int delay = 100; // Start with 100ms
+		int maxDelay = 5000; // Max 5 seconds between checks
+		
+		try {
+			while (System.currentTimeMillis() - startTime < timeoutMs) {
+				Object currentValue = getPropertySafe(obj, propertyName);
+				
+				// Check if value has changed
+				if (currentValue == null && unwantedValue != null) {
+					return true; // Changed to null
+				}
+				if (currentValue != null && !currentValue.equals(unwantedValue)) {
+					return true; // Changed to different value
+				}
+				
+				// Sleep before next check
+				Thread.sleep(delay);
+				
+				// Exponential backoff
+				delay = Math.min(delay * 2, maxDelay);
+			}
+			
+			return false; // Timeout
+			
+		} catch (InterruptedException e) {
+			lastError = e;
+			throw new Exception("Wait interrupted", e);
+		}
+	}
+
+	/**
+	 * Wait for an object's property to reach a specific value, using exponential
+	 * backoff and timeout.
+	 * <p>
+	 * <b>Example:</b>
+	 * <pre>
+	 * var completed = system.waitForPropertyValue(
+	 *     myRequest,
+	 *     "status",
+	 *     com.ibm.itim.apps.Request.COMPLETED,
+	 *     60  // 60 second timeout
+	 * );
+	 * </pre>
+	 * 
+	 * @param obj The object to monitor
+	 * @param propertyName The property name to check (e.g., "status")
+	 * @param expectedValue The value to wait for
+	 * @param timeoutSeconds Maximum time to wait in seconds
+	 * @return true if expected value was reached, false if timeout occurred
+	 * @throws Exception if monitoring fails or is interrupted
+	 */
+	public boolean waitForPropertyValue(Object obj, String propertyName, 
+									   Object expectedValue, int timeoutSeconds) throws Exception {
+		if (obj == null) {
+			throw new IllegalArgumentException("Cannot monitor null object");
+		}
+		
+		if (timeoutSeconds <= 0) {
+			throw new IllegalArgumentException("Timeout must be positive");
+		}
+		
+		long startTime = System.currentTimeMillis();
+		long timeoutMs = timeoutSeconds * 1000L;
+		int delay = 100; // Start with 100ms
+		int maxDelay = 5000; // Max 5 seconds between checks
+		
+		try {
+			while (System.currentTimeMillis() - startTime < timeoutMs) {
+				Object currentValue = getPropertySafe(obj, propertyName);
+				
+				// Check if value matches expected
+				if (currentValue == null && expectedValue == null) {
+					return true; // Both null
+				}
+				if (currentValue != null && currentValue.equals(expectedValue)) {
+					return true; // Match found
+				}
+				
+				// Sleep before next check
+				Thread.sleep(delay);
+				
+				// Exponential backoff
+				delay = Math.min(delay * 2, maxDelay);
+			}
+			
+			return false; // Timeout
+			
+		} catch (InterruptedException e) {
+			lastError = e;
+			throw new Exception("Wait interrupted", e);
+		}
+	}
+
+	// =========================================================================
+	// Phase 4: xslTransform Enhancements
+	// =========================================================================
+
+	/**
+	 * Transforms an XML document using an XSL stylesheet with runtime parameters.
+	 * <p>
+	 * Parameters are passed to the XSLT processor and accessed via
+	 * {@code <xsl:param name="paramName"/>} declarations in the stylesheet.
+	 * This overload maintains backward compatibility with the existing
+	 * {@link #xslTransform(Object, Object)} method.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var params = [
+	 *     ["reportDate", new Date().toString()],
+	 *     ["userName", "admin"],
+	 *     ["outputFormat", "html"]
+	 * ];
+	 * var result = system.xslTransform(xslFile, xmlFile, params);
+	 * </pre>
+	 *
+	 * @param xsl
+	 *            The XSL stylesheet (String filename, String with newlines,
+	 *            java.io.File, java.io.Reader, java.io.InputStream, or StreamSource)
+	 * @param xml
+	 *            The XML document (same types as xsl)
+	 * @param params
+	 *            Array of parameter name-value pairs. Each element must be a
+	 *            two-element array: {@code [["name1","val1"],["name2","val2"]]}
+	 *            Pass null to perform transformation without parameters.
+	 * @return The transformed document as a String, or null on error
+	 * @see #xslTransform(Object, Object)
+	 * @see #xslTransform(Object, Object, Object[][], String)
+	 * @see #xslTransformToFile(Object, Object, Object[][], String)
+	 * @see #lastError
+	 * @since 10.1
+	 */
+	public String xslTransform(Object xsl, Object xml, Object[][] params) {
+		return xslTransform(xsl, xml, params, (String) null);
+	}
+
+	/**
+	 * Transforms an XML document using an XSL stylesheet with parameters and
+	 * explicit output encoding control.
+	 * <p>
+	 * This overload allows overriding the encoding declared in the XSLT
+	 * {@code <xsl:output>} element, ensuring consistent encoding across
+	 * transformations regardless of stylesheet declarations.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var params = [["title", "My Report"]];
+	 * var result = system.xslTransform(xslFile, xmlFile, params, "UTF-8");
+	 * </pre>
+	 *
+	 * @param xsl
+	 *            The XSL stylesheet
+	 * @param xml
+	 *            The XML document
+	 * @param params
+	 *            Array of parameter name-value pairs, or null
+	 * @param outputEncoding
+	 *            Output encoding (e.g. "UTF-8", "ISO-8859-1"), or null to use
+	 *            the encoding declared in the stylesheet
+	 * @return The transformed document as a String, or null on error
+	 * @see #xslTransform(Object, Object, Object[][])
+	 * @see #lastError
+	 * @since 10.1
+	 */
+	public String xslTransform(Object xsl, Object xml, Object[][] params, String outputEncoding) {
+		try {
+			TransformerFactory transfactory = TransformerFactory.newInstance();
+			ErrorListenerImpl el = new ErrorListenerImpl();
+			transfactory.setErrorListener(el);
+			Transformer transformer = transfactory.newTransformer(getStreamSource(xsl));
+			if (el.excep != null)
+				throw el.excep;
+
+			// Apply parameters
+			if (params != null) {
+				for (Object[] param : params) {
+					if (param != null && param.length >= 2 && param[0] != null) {
+						transformer.setParameter(param[0].toString(),
+								param[1] != null ? param[1].toString() : "");
+					}
+				}
+			}
+
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			el.excep = null;
+			transformer.setErrorListener(el);
+			transformer.transform(getStreamSource(xml), new StreamResult(bos));
+			if (el.excep != null)
+				throw el.excep;
+
+			// Resolve encoding: explicit override > stylesheet declaration
+			if (outputEncoding != null && !outputEncoding.isEmpty()) {
+				return bos.toString(outputEncoding);
+			}
+			String declaredEncoding = transformer.getOutputProperty("encoding");
+			if (declaredEncoding != null) {
+				return bos.toString(declaredEncoding);
+			}
+			return bos.toString();
+		} catch (Exception error) {
+			lastError = error;
+			return null;
+		}
+	}
+
+	/**
+	 * Transforms an XML document using an XSL stylesheet with parameters and
+	 * runtime output property overrides.
+	 * <p>
+	 * Output properties correspond to standard JAXP {@link OutputKeys} constants
+	 * (e.g. {@code "indent"}, {@code "method"}, {@code "omit-xml-declaration"},
+	 * {@code "encoding"}). Properties set here override those declared in the
+	 * stylesheet's {@code <xsl:output>} element.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var params = [["title", "Report"]];
+	 * var config = new java.util.Properties();
+	 * config.setProperty("indent", "yes");
+	 * config.setProperty("omit-xml-declaration", "no");
+	 * config.setProperty("method", "html");
+	 * var result = system.xslTransform(xslFile, xmlFile, params, config);
+	 * </pre>
+	 *
+	 * @param xsl
+	 *            The XSL stylesheet
+	 * @param xml
+	 *            The XML document
+	 * @param params
+	 *            Array of parameter name-value pairs, or null
+	 * @param outputProperties
+	 *            Output property overrides as a {@link java.util.Properties}
+	 *            object, or null for stylesheet defaults
+	 * @return The transformed document as a String, or null on error
+	 * @see #xslTransform(Object, Object, Object[][], String)
+	 * @see #lastError
+	 * @since 10.1
+	 */
+	public String xslTransform(Object xsl, Object xml, Object[][] params, Properties outputProperties) {
+		try {
+			TransformerFactory transfactory = TransformerFactory.newInstance();
+			ErrorListenerImpl el = new ErrorListenerImpl();
+			transfactory.setErrorListener(el);
+			Transformer transformer = transfactory.newTransformer(getStreamSource(xsl));
+			if (el.excep != null)
+				throw el.excep;
+
+			// Apply output property overrides
+			if (outputProperties != null) {
+				for (String key : outputProperties.stringPropertyNames()) {
+					transformer.setOutputProperty(key, outputProperties.getProperty(key));
+				}
+			}
+
+			// Apply parameters
+			if (params != null) {
+				for (Object[] param : params) {
+					if (param != null && param.length >= 2 && param[0] != null) {
+						transformer.setParameter(param[0].toString(),
+								param[1] != null ? param[1].toString() : "");
+					}
+				}
+			}
+
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			el.excep = null;
+			transformer.setErrorListener(el);
+			transformer.transform(getStreamSource(xml), new StreamResult(bos));
+			if (el.excep != null)
+				throw el.excep;
+
+			String enc = transformer.getOutputProperty("encoding");
+			return (enc != null) ? bos.toString(enc) : bos.toString();
+		} catch (Exception error) {
+			lastError = error;
+			return null;
+		}
+	}
+
+	/**
+	 * Transforms an XML document and writes the result directly to a file.
+	 * <p>
+	 * More memory-efficient than the String-returning overloads for large
+	 * transformations, as the output is streamed directly to disk without being
+	 * buffered in memory.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var params = [["title", "Annual Report"]];
+	 * var ok = system.xslTransformToFile(xslFile, xmlFile, params, "/output/report.html");
+	 * if (!ok) task.logmsg("Transform failed: " + system.lastError);
+	 * </pre>
+	 *
+	 * @param xsl
+	 *            The XSL stylesheet
+	 * @param xml
+	 *            The XML document
+	 * @param params
+	 *            Array of parameter name-value pairs, or null
+	 * @param outputFile
+	 *            Path to the output file; parent directories must exist
+	 * @return true if the transformation succeeded, false on error
+	 * @see #xslTransform(Object, Object, Object[][])
+	 * @see #lastError
+	 * @since 10.1
+	 */
+	public boolean xslTransformToFile(Object xsl, Object xml, Object[][] params, String outputFile) {
+		try {
+			TransformerFactory transfactory = TransformerFactory.newInstance();
+			ErrorListenerImpl el = new ErrorListenerImpl();
+			transfactory.setErrorListener(el);
+			Transformer transformer = transfactory.newTransformer(getStreamSource(xsl));
+			if (el.excep != null)
+				throw el.excep;
+
+			if (params != null) {
+				for (Object[] param : params) {
+					if (param != null && param.length >= 2 && param[0] != null) {
+						transformer.setParameter(param[0].toString(),
+								param[1] != null ? param[1].toString() : "");
+					}
+				}
+			}
+
+			el.excep = null;
+			transformer.setErrorListener(el);
+			transformer.transform(getStreamSource(xml), new StreamResult(new File(outputFile)));
+			if (el.excep != null)
+				throw el.excep;
+
+			return true;
+		} catch (Exception error) {
+			lastError = error;
+			return false;
+		}
+	}
+
+	/**
+	 * Transforms an XML document with a custom base URI for resolving relative
+	 * references in {@code xsl:import} and {@code xsl:include} directives.
+	 * <p>
+	 * Useful when working with modular stylesheets split across multiple files,
+	 * where import paths are relative to a base directory rather than the
+	 * process working directory.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var params = [["lang", "en"]];
+	 * var result = system.xslTransformWithBase(xslFile, xmlFile, params,
+	 *                   "file:///opt/tdi/stylesheets/");
+	 * </pre>
+	 *
+	 * @param xsl
+	 *            The XSL stylesheet
+	 * @param xml
+	 *            The XML document
+	 * @param params
+	 *            Array of parameter name-value pairs, or null
+	 * @param baseUri
+	 *            Base URI for resolving relative stylesheet references
+	 * @return The transformed document as a String, or null on error
+	 * @see #xslTransform(Object, Object, Object[][])
+	 * @see #lastError
+	 * @since 10.1
+	 */
+	public String xslTransformWithBase(Object xsl, Object xml, Object[][] params, String baseUri) {
+		try {
+			TransformerFactory transfactory = TransformerFactory.newInstance();
+			ErrorListenerImpl el = new ErrorListenerImpl();
+			transfactory.setErrorListener(el);
+
+			if (baseUri != null && !baseUri.isEmpty()) {
+				final String base = baseUri;
+				transfactory.setURIResolver(new URIResolver() {
+					public javax.xml.transform.Source resolve(String href, String unused)
+							throws javax.xml.transform.TransformerException {
+						return new StreamSource(base + href);
+					}
+				});
+			}
+
+			Transformer transformer = transfactory.newTransformer(getStreamSource(xsl));
+			if (el.excep != null)
+				throw el.excep;
+
+			if (params != null) {
+				for (Object[] param : params) {
+					if (param != null && param.length >= 2 && param[0] != null) {
+						transformer.setParameter(param[0].toString(),
+								param[1] != null ? param[1].toString() : "");
+					}
+				}
+			}
+
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			el.excep = null;
+			transformer.setErrorListener(el);
+			transformer.transform(getStreamSource(xml), new StreamResult(bos));
+			if (el.excep != null)
+				throw el.excep;
+
+			String enc = transformer.getOutputProperty("encoding");
+			return (enc != null) ? bos.toString(enc) : bos.toString();
+		} catch (Exception error) {
+			lastError = error;
+			return null;
+		}
+	}
+
+	/** Cache for compiled XSLT templates, keyed by user-supplied cache key. */
+	private final Map<String, javax.xml.transform.Templates> xslTemplateCache =
+			new ConcurrentHashMap<>();
+
+	/**
+	 * Transforms an XML document using a cached compiled XSLT transformer.
+	 * <p>
+	 * Compiling an XSLT stylesheet is expensive. When the same stylesheet is
+	 * used repeatedly (e.g. inside an Assembly Line loop), providing a
+	 * {@code cacheKey} causes the compiled {@link javax.xml.transform.Templates}
+	 * object to be stored and reused, significantly reducing CPU overhead.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * // First call compiles; subsequent calls reuse the compiled template
+	 * var params = [["date", new Date().toString()]];
+	 * var result = system.xslTransformCached(xslFile, xmlDoc, params, "myReport");
+	 * </pre>
+	 *
+	 * @param xsl
+	 *            The XSL stylesheet
+	 * @param xml
+	 *            The XML document
+	 * @param params
+	 *            Array of parameter name-value pairs, or null
+	 * @param cacheKey
+	 *            Unique string key identifying this stylesheet in the cache.
+	 *            Pass null to disable caching (compiles every time).
+	 * @return The transformed document as a String, or null on error
+	 * @see #xslTransform(Object, Object, Object[][])
+	 * @see #lastError
+	 * @since 10.1
+	 */
+	public String xslTransformCached(Object xsl, Object xml, Object[][] params, String cacheKey) {
+		try {
+			javax.xml.transform.Templates templates = null;
+
+			if (cacheKey != null) {
+				templates = xslTemplateCache.get(cacheKey);
+			}
+
+			if (templates == null) {
+				TransformerFactory transfactory = TransformerFactory.newInstance();
+				ErrorListenerImpl el = new ErrorListenerImpl();
+				transfactory.setErrorListener(el);
+				templates = transfactory.newTemplates(getStreamSource(xsl));
+				if (el.excep != null)
+					throw el.excep;
+				if (cacheKey != null) {
+					xslTemplateCache.put(cacheKey, templates);
+				}
+			}
+
+			Transformer transformer = templates.newTransformer();
+			ErrorListenerImpl el2 = new ErrorListenerImpl();
+			transformer.setErrorListener(el2);
+
+			if (params != null) {
+				for (Object[] param : params) {
+					if (param != null && param.length >= 2 && param[0] != null) {
+						transformer.setParameter(param[0].toString(),
+								param[1] != null ? param[1].toString() : "");
+					}
+				}
+			}
+
+			ByteArrayOutputStream bos = new ByteArrayOutputStream();
+			transformer.transform(getStreamSource(xml), new StreamResult(bos));
+			if (el2.excep != null)
+				throw el2.excep;
+
+			String enc = transformer.getOutputProperty("encoding");
+			return (enc != null) ? bos.toString(enc) : bos.toString();
+		} catch (Exception error) {
+			lastError = error;
+			return null;
+		}
+	}
+
+	/**
+	 * Clears all entries from the XSL transformer cache.
+	 * <p>
+	 * Call this method when stylesheets have been updated on disk and you need
+	 * the next {@link #xslTransformCached} call to recompile them.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * system.clearXslCache();
+	 * </pre>
+	 *
+	 * @see #xslTransformCached(Object, Object, Object[][], String)
+	 * @since 10.1
+	 */
+	public void clearXslCache() {
+		xslTemplateCache.clear();
+	}
+
+	// =========================================================================
+	// Phase 4: String Manipulation Methods
+	// =========================================================================
+
+	/**
+	 * Splits a string with advanced control over empty tokens and trimming.
+	 * <p>
+	 * Unlike the existing {@link #splitString(String, String)} which uses
+	 * {@code StringTokenizer} and silently drops empty tokens, this method
+	 * supports preserving empty tokens and optional whitespace trimming.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * // Preserve empty tokens
+	 * var parts = system.splitStringAdvanced("a,,b,c", ",", -1, true, false);
+	 * // Result: ["a", "", "b", "c"]
+	 *
+	 * // Trim each token
+	 * var parts = system.splitStringAdvanced(" a , b , c ", ",", -1, false, true);
+	 * // Result: ["a", "b", "c"]
+	 * </pre>
+	 *
+	 * @param source
+	 *            The string to split
+	 * @param delimiter
+	 *            Literal delimiter string
+	 * @param limit
+	 *            Maximum number of tokens (-1 for unlimited)
+	 * @param preserveEmpty
+	 *            If true, empty tokens between consecutive delimiters are kept
+	 * @param trim
+	 *            If true, each token is trimmed of surrounding whitespace
+	 * @return Array of tokens, or null on error
+	 * @see #splitString(String, String)
+	 * @see #splitStringRegex(String, String, int)
+	 * @since 10.1
+	 */
+	public String[] splitStringAdvanced(String source, String delimiter, int limit,
+			boolean preserveEmpty, boolean trim) {
+		if (source == null)
+			return null;
+		try {
+			String[] parts;
+			if (limit > 0) {
+				parts = source.split(Pattern.quote(delimiter), limit);
+			} else {
+				parts = source.split(Pattern.quote(delimiter), -1);
+			}
+			List<String> result = new ArrayList<>();
+			for (String part : parts) {
+				String token = trim ? part.trim() : part;
+				if (preserveEmpty || !token.isEmpty()) {
+					result.add(token);
+				}
+			}
+			return result.toArray(new String[0]);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Splits a string using a regular expression pattern.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * // Split on one or more whitespace characters
+	 * var words = system.splitStringRegex("hello   world  foo", "\\s+", -1);
+	 * // Result: ["hello", "world", "foo"]
+	 * </pre>
+	 *
+	 * @param source
+	 *            The string to split
+	 * @param regexPattern
+	 *            Regular expression to split on
+	 * @param limit
+	 *            Maximum number of tokens (-1 for unlimited)
+	 * @return Array of tokens, or null on error
+	 * @see #splitStringAdvanced(String, String, int, boolean, boolean)
+	 * @since 10.1
+	 */
+	public String[] splitStringRegex(String source, String regexPattern, int limit) {
+		if (source == null)
+			return null;
+		try {
+			return limit > 0 ? source.split(regexPattern, limit) : source.split(regexPattern, -1);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Joins an array of objects into a single string with a delimiter.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var result = system.joinStrings(["a", "b", "c"], ", ");
+	 * // Result: "a, b, c"
+	 * </pre>
+	 *
+	 * @param array
+	 *            Array of objects whose {@code toString()} values are joined;
+	 *            null elements are represented as empty strings
+	 * @param delimiter
+	 *            Separator placed between each element
+	 * @return Joined string, or null on error
+	 * @since 10.1
+	 */
+	public String joinStrings(Object[] array, String delimiter) {
+		if (array == null)
+			return null;
+		try {
+			StringBuilder sb = new StringBuilder();
+			for (int i = 0; i < array.length; i++) {
+				if (i > 0)
+					sb.append(delimiter != null ? delimiter : "");
+				sb.append(array[i] != null ? array[i].toString() : "");
+			}
+			return sb.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Left-pads a string to the specified length with a pad character.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var padded = system.padLeft("42", 6, "0");
+	 * // Result: "000042"
+	 * </pre>
+	 *
+	 * @param str
+	 *            The string to pad
+	 * @param length
+	 *            Target total length; if str is already this long or longer, it
+	 *            is returned unchanged
+	 * @param padChar
+	 *            Single character used for padding
+	 * @return Padded string
+	 * @see #padRight(String, int, String)
+	 * @since 10.1
+	 */
+	public String padLeft(String str, int length, String padChar) {
+		if (str == null)
+			str = "";
+		if (padChar == null || padChar.isEmpty())
+			padChar = " ";
+		String pad = padChar.substring(0, 1);
+		StringBuilder sb = new StringBuilder();
+		for (int i = str.length(); i < length; i++)
+			sb.append(pad);
+		sb.append(str);
+		return sb.toString();
+	}
+
+	/**
+	 * Right-pads a string to the specified length with a pad character.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var padded = system.padRight("hello", 10, "-");
+	 * // Result: "hello-----"
+	 * </pre>
+	 *
+	 * @param str
+	 *            The string to pad
+	 * @param length
+	 *            Target total length
+	 * @param padChar
+	 *            Single character used for padding
+	 * @return Padded string
+	 * @see #padLeft(String, int, String)
+	 * @since 10.1
+	 */
+	public String padRight(String str, int length, String padChar) {
+		if (str == null)
+			str = "";
+		if (padChar == null || padChar.isEmpty())
+			padChar = " ";
+		String pad = padChar.substring(0, 1);
+		StringBuilder sb = new StringBuilder(str);
+		while (sb.length() < length)
+			sb.append(pad);
+		return sb.toString();
+	}
+
+	/**
+	 * Truncates a string to a maximum length, appending a suffix when truncated.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var result = system.truncateString("Hello World", 8, "...");
+	 * // Result: "Hello..."
+	 * </pre>
+	 *
+	 * @param str
+	 *            The string to truncate
+	 * @param maxLength
+	 *            Maximum total length of the returned string (including suffix)
+	 * @param suffix
+	 *            Appended when truncation occurs (e.g. {@code "..."})
+	 * @return Truncated string
+	 * @since 10.1
+	 */
+	public String truncateString(String str, int maxLength, String suffix) {
+		if (str == null)
+			return null;
+		if (str.length() <= maxLength)
+			return str;
+		String sfx = (suffix != null) ? suffix : "";
+		int cutAt = maxLength - sfx.length();
+		if (cutAt < 0)
+			cutAt = 0;
+		return str.substring(0, cutAt) + sfx;
+	}
+
+	/**
+	 * Replaces all occurrences of a regex pattern with a replacement string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var result = system.replaceAllRegex("foo123bar456", "\\d+", "#");
+	 * // Result: "foo#bar#"
+	 * </pre>
+	 *
+	 * @param source
+	 *            The source string
+	 * @param regexPattern
+	 *            Regular expression pattern to match
+	 * @param replacement
+	 *            Replacement string (supports {@code $1} back-references)
+	 * @return Result string, or null on error
+	 * @since 10.1
+	 */
+	public String replaceAllRegex(String source, String regexPattern, String replacement) {
+		if (source == null)
+			return null;
+		try {
+			return source.replaceAll(regexPattern, replacement != null ? replacement : "");
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Tests whether a string fully matches a regular expression pattern.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.matchesRegex(email, "^[\\w._%+\\-]+@[\\w.\\-]+\\.[a-z]{2,}$")) {
+	 *     // valid email
+	 * }
+	 * </pre>
+	 *
+	 * @param source
+	 *            The string to test
+	 * @param regexPattern
+	 *            Regular expression pattern
+	 * @return true if the entire string matches the pattern
+	 * @since 10.1
+	 */
+	public boolean matchesRegex(String source, String regexPattern) {
+		if (source == null || regexPattern == null)
+			return false;
+		try {
+			return source.matches(regexPattern);
+		} catch (Exception e) {
+			lastError = e;
+			return false;
+		}
+	}
+
+	/**
+	 * Extracts the first match of a regex group from a string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * // Extract the domain from an email
+	 * var domain = system.extractRegex("user@example.com", "@(.+)$", 1);
+	 * // Result: "example.com"
+	 * </pre>
+	 *
+	 * @param source
+	 *            The string to search
+	 * @param regexPattern
+	 *            Regular expression pattern containing capture groups
+	 * @param groupIndex
+	 *            Capture group index (0 = entire match, 1 = first group, etc.)
+	 * @return Matched text, or null if no match
+	 * @since 10.1
+	 */
+	public String extractRegex(String source, String regexPattern, int groupIndex) {
+		if (source == null || regexPattern == null)
+			return null;
+		try {
+			Matcher m = Pattern.compile(regexPattern).matcher(source);
+			if (m.find()) {
+				return m.group(groupIndex);
+			}
+			return null;
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Case-insensitive substring check.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.containsIgnoreCase(description, "admin")) { ... }
+	 * </pre>
+	 *
+	 * @param source
+	 *            The string to search within
+	 * @param search
+	 *            The substring to look for
+	 * @return true if source contains search (case-insensitive)
+	 * @since 10.1
+	 */
+	public boolean containsIgnoreCase(String source, String search) {
+		if (source == null || search == null)
+			return false;
+		return source.toLowerCase(Locale.ROOT).contains(search.toLowerCase(Locale.ROOT));
+	}
+
+	/**
+	 * Returns the index of the first case-insensitive occurrence of a substring.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var idx = system.indexOfIgnoreCase("Hello World", "world");
+	 * // Result: 6
+	 * </pre>
+	 *
+	 * @param source
+	 *            The string to search within
+	 * @param search
+	 *            The substring to find
+	 * @return Index of first occurrence, or -1 if not found
+	 * @since 10.1
+	 */
+	public int indexOfIgnoreCase(String source, String search) {
+		if (source == null || search == null)
+			return -1;
+		return source.toLowerCase(Locale.ROOT).indexOf(search.toLowerCase(Locale.ROOT));
+	}
+
+	/**
+	 * Replaces the first occurrence of a literal target string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var result = system.replaceFirst("aabbcc", "b", "X");
+	 * // Result: "aaXbcc"
+	 * </pre>
+	 *
+	 * @param source
+	 *            The source string
+	 * @param target
+	 *            Literal string to find (not a regex)
+	 * @param replacement
+	 *            Replacement value
+	 * @return Result string
+	 * @since 10.1
+	 */
+	public String replaceFirst(String source, String target, String replacement) {
+		if (source == null)
+			return null;
+		if (target == null || target.isEmpty())
+			return source;
+		int idx = source.indexOf(target);
+		if (idx < 0)
+			return source;
+		return source.substring(0, idx)
+				+ (replacement != null ? replacement : "")
+				+ source.substring(idx + target.length());
+	}
+
+	/**
+	 * Reverses a string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var result = system.reverse("hello");
+	 * // Result: "olleh"
+	 * </pre>
+	 *
+	 * @param str
+	 *            The string to reverse
+	 * @return Reversed string, or null if input is null
+	 * @since 10.1
+	 */
+	public String reverse(String str) {
+		if (str == null)
+			return null;
+		return new StringBuilder(str).reverse().toString();
+	}
+
+	/**
+	 * Repeats a string a specified number of times.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var line = system.repeat("-", 40);
+	 * // Result: "----------------------------------------"
+	 * </pre>
+	 *
+	 * @param str
+	 *            The string to repeat
+	 * @param count
+	 *            Number of repetitions (0 returns empty string)
+	 * @return Repeated string
+	 * @since 10.1
+	 */
+	public String repeat(String str, int count) {
+		if (str == null || count <= 0)
+			return "";
+		StringBuilder sb = new StringBuilder(str.length() * count);
+		for (int i = 0; i < count; i++)
+			sb.append(str);
+		return sb.toString();
+	}
+
+	// =========================================================================
+	// Phase 4: Numeric Utility Methods
+	// =========================================================================
+
+	/**
+	 * Converts a string to a Double value.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var amount = system.toDouble("3.14159");
+	 * </pre>
+	 *
+	 * @param str
+	 *            String representation of a double value
+	 * @return Double object, or null on parse failure
+	 * @see #isValidDouble(String)
+	 * @since 10.1
+	 */
+	public Double toDouble(String str) {
+		if (str == null)
+			return null;
+		try {
+			return Double.parseDouble(str.trim());
+		} catch (NumberFormatException e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Tests whether a string represents a valid double value.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.isValidDouble(input)) {
+	 *     var d = system.toDouble(input);
+	 * }
+	 * </pre>
+	 *
+	 * @param str
+	 *            String to validate
+	 * @return true if the string can be parsed as a double
+	 * @see #toDouble(String)
+	 * @since 10.1
+	 */
+	public boolean isValidDouble(String str) {
+		if (str == null)
+			return false;
+		try {
+			Double.parseDouble(str.trim());
+			return true;
+		} catch (NumberFormatException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Formats a number to a specified number of decimal places.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var formatted = system.formatNumber(3.14159, 2);
+	 * // Result: "3.14"
+	 * </pre>
+	 *
+	 * @param number
+	 *            The number to format
+	 * @param decimalPlaces
+	 *            Number of decimal places (0 for integers)
+	 * @return Formatted string
+	 * @since 10.1
+	 */
+	public String formatNumber(double number, int decimalPlaces) {
+		try {
+			java.text.DecimalFormat df = new java.text.DecimalFormat();
+			df.setMinimumFractionDigits(decimalPlaces);
+			df.setMaximumFractionDigits(decimalPlaces);
+			df.setGroupingUsed(false);
+			return df.format(number);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Rounds a double value to the specified number of decimal places.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var result = system.roundNumber(3.14159, 2);
+	 * // Result: 3.14
+	 * </pre>
+	 *
+	 * @param number
+	 *            The number to round
+	 * @param decimalPlaces
+	 *            Number of decimal places
+	 * @return Rounded value
+	 * @since 10.1
+	 */
+	public double roundNumber(double number, int decimalPlaces) {
+		double scale = Math.pow(10, decimalPlaces);
+		return Math.round(number * scale) / scale;
+	}
+
+	/**
+	 * Clamps a value to the inclusive range [{@code min}, {@code max}].
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var score = system.clampNumber(rawScore, 0.0, 100.0);
+	 * </pre>
+	 *
+	 * @param value
+	 *            The value to clamp
+	 * @param min
+	 *            Minimum allowed value (inclusive)
+	 * @param max
+	 *            Maximum allowed value (inclusive)
+	 * @return Clamped value
+	 * @since 10.1
+	 */
+	public double clampNumber(double value, double min, double max) {
+		return Math.max(min, Math.min(max, value));
+	}
+
+	/**
+	 * Tests whether a string represents any numeric value (integer or decimal).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.isNumeric(work.getString("amount"))) {
+	 *     // safe to parse
+	 * }
+	 * </pre>
+	 *
+	 * @param str
+	 *            String to test
+	 * @return true if the string is numeric
+	 * @since 10.1
+	 */
+	public boolean isNumeric(String str) {
+		if (str == null || str.trim().isEmpty())
+			return false;
+		try {
+			Double.parseDouble(str.trim());
+			return true;
+		} catch (NumberFormatException e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Returns a random double in the range [{@code min}, {@code max}).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var delay = system.randomNumber(1000, 5000); // random ms between 1-5 sec
+	 * </pre>
+	 *
+	 * @param min
+	 *            Minimum value (inclusive)
+	 * @param max
+	 *            Maximum value (exclusive)
+	 * @return Random double in [min, max)
+	 * @since 10.1
+	 */
+	public double randomNumber(double min, double max) {
+		return min + (new Random().nextDouble() * (max - min));
+	}
+
+	// =========================================================================
+	// Phase 4: Date/Time Enhancement Methods
+	// =========================================================================
+
+	/**
+	 * Parses a date string using the specified format, timezone and locale.
+	 * <p>
+	 * Extends the existing {@link #parseDate(String, String)} with timezone and
+	 * locale awareness, and an optional lenient parsing mode.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var d = system.parseDate("2024-06-01 15:30:00", "yyyy-MM-dd HH:mm:ss",
+	 *                          "America/New_York", "en_US", false);
+	 * </pre>
+	 *
+	 * @param value
+	 *            The date string to parse
+	 * @param format
+	 *            Date/time format pattern (SimpleDateFormat)
+	 * @param timezone
+	 *            Timezone ID (e.g. "UTC", "America/New_York"), or null for system default
+	 * @param locale
+	 *            Locale string (e.g. "en_US", "de_DE"), or null for system default
+	 * @param lenient
+	 *            If true, permits slightly out-of-range values (e.g. month 13)
+	 * @return Parsed Date object, or null on error
+	 * @see #parseDate(String, String)
+	 * @since 10.1
+	 */
+	public Date parseDate(String value, String format, String timezone, String locale, boolean lenient) {
+		if (value == null || format == null)
+			return null;
+		try {
+			Locale loc = (locale != null) ? new Locale(locale.replace("-", "_").split("_")[0],
+					locale.contains("_") ? locale.split("_")[1] : "") : Locale.getDefault();
+			java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat(format, loc);
+			sdf.setLenient(lenient);
+			if (timezone != null && !timezone.isEmpty()) {
+				sdf.setTimeZone(java.util.TimeZone.getTimeZone(timezone));
+			}
+			return sdf.parse(value);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Formats a Date object using the specified format, timezone and locale.
+	 * <p>
+	 * Extends the existing {@link #formatDate(Date, String)} with timezone and
+	 * locale awareness.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var str = system.formatDate(new Date(), "yyyy-MM-dd HH:mm:ss z",
+	 *                             "UTC", "en_US");
+	 * </pre>
+	 *
+	 * @param date
+	 *            The Date to format
+	 * @param format
+	 *            Date/time format pattern (SimpleDateFormat)
+	 * @param timezone
+	 *            Timezone ID, or null for system default
+	 * @param locale
+	 *            Locale string, or null for system default
+	 * @return Formatted date string, or null on error
+	 * @see #formatDate(Date, String)
+	 * @since 10.1
+	 */
+	public String formatDate(Date date, String format, String timezone, String locale) {
+		if (date == null || format == null)
+			return null;
+		try {
+			Locale loc = (locale != null) ? new Locale(locale.replace("-", "_").split("_")[0],
+					locale.contains("_") ? locale.split("_")[1] : "") : Locale.getDefault();
+			java.text.SimpleDateFormat sdf = new java.text.SimpleDateFormat(format, loc);
+			if (timezone != null && !timezone.isEmpty()) {
+				sdf.setTimeZone(java.util.TimeZone.getTimeZone(timezone));
+			}
+			return sdf.format(date);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Adds a number of days to a Date.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var tomorrow = system.addDays(new Date(), 1);
+	 * var lastWeek = system.addDays(new Date(), -7);
+	 * </pre>
+	 *
+	 * @param date
+	 *            The base date
+	 * @param days
+	 *            Number of days to add (negative to subtract)
+	 * @return New Date with days added
+	 * @see #addHours(Date, int)
+	 * @see #addMonths(Date, int)
+	 * @since 10.1
+	 */
+	public Date addDays(Date date, int days) {
+		if (date == null)
+			return null;
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(date);
+		cal.add(Calendar.DAY_OF_MONTH, days);
+		return cal.getTime();
+	}
+
+	/**
+	 * Adds a number of hours to a Date.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var inTwoHours = system.addHours(new Date(), 2);
+	 * </pre>
+	 *
+	 * @param date
+	 *            The base date
+	 * @param hours
+	 *            Number of hours to add (negative to subtract)
+	 * @return New Date with hours added
+	 * @see #addDays(Date, int)
+	 * @since 10.1
+	 */
+	public Date addHours(Date date, int hours) {
+		if (date == null)
+			return null;
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(date);
+		cal.add(Calendar.HOUR_OF_DAY, hours);
+		return cal.getTime();
+	}
+
+	/**
+	 * Adds a number of months to a Date.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var nextQuarter = system.addMonths(new Date(), 3);
+	 * </pre>
+	 *
+	 * @param date
+	 *            The base date
+	 * @param months
+	 *            Number of months to add (negative to subtract)
+	 * @return New Date with months added
+	 * @see #addDays(Date, int)
+	 * @since 10.1
+	 */
+	public Date addMonths(Date date, int months) {
+		if (date == null)
+			return null;
+		Calendar cal = Calendar.getInstance();
+		cal.setTime(date);
+		cal.add(Calendar.MONTH, months);
+		return cal.getTime();
+	}
+
+	/**
+	 * Returns the number of complete days between two dates.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var days = system.dateDiffDays(startDate, endDate);
+	 * task.logmsg("Duration: " + days + " days");
+	 * </pre>
+	 *
+	 * @param date1
+	 *            Start date
+	 * @param date2
+	 *            End date
+	 * @return Number of complete days between date1 and date2 (can be negative)
+	 * @see #dateDiffHours(Date, Date)
+	 * @since 10.1
+	 */
+	public long dateDiffDays(Date date1, Date date2) {
+		if (date1 == null || date2 == null)
+			return 0;
+		long diffMs = date2.getTime() - date1.getTime();
+		return diffMs / (1000L * 60 * 60 * 24);
+	}
+
+	/**
+	 * Returns the number of complete hours between two dates.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var hours = system.dateDiffHours(startDate, endDate);
+	 * </pre>
+	 *
+	 * @param date1
+	 *            Start date
+	 * @param date2
+	 *            End date
+	 * @return Number of complete hours between date1 and date2 (can be negative)
+	 * @see #dateDiffDays(Date, Date)
+	 * @since 10.1
+	 */
+	public long dateDiffHours(Date date1, Date date2) {
+		if (date1 == null || date2 == null)
+			return 0;
+		long diffMs = date2.getTime() - date1.getTime();
+		return diffMs / (1000L * 60 * 60);
+	}
+
+	/**
+	 * Tests whether a given year is a leap year.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.isLeapYear(2024)) {
+	 *     task.logmsg("February has 29 days");
+	 * }
+	 * </pre>
+	 *
+	 * @param year
+	 *            The four-digit year to test
+	 * @return true if the year is a leap year
+	 * @since 10.1
+	 */
+	public boolean isLeapYear(int year) {
+		return (year % 4 == 0 && year % 100 != 0) || (year % 400 == 0);
+	}
+
+	// =========================================================================
+	// Phase 4: File I/O Utility Methods
+	// =========================================================================
+
+	/**
+	 * Reads the entire contents of a file to a String with explicit encoding.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var content = system.readFileToString("/etc/config.xml", "UTF-8");
+	 * if (content == null) task.logmsg("Read failed: " + system.lastError);
+	 * </pre>
+	 *
+	 * @param filename
+	 *            Path to the file
+	 * @param encoding
+	 *            Character encoding (e.g. "UTF-8"), or null for platform default
+	 * @return File contents as a String, or null on error
+	 * @see #writeStringToFile(String, String, String, boolean)
+	 * @since 10.1
+	 */
+	public String readFileToString(String filename, String encoding) {
+		if (filename == null)
+			return null;
+		try {
+			java.io.InputStream is = new FileInputStream(filename);
+			InputStreamReader isr = (encoding != null)
+					? new InputStreamReader(is, encoding)
+					: new InputStreamReader(is);
+			BufferedReader br = new BufferedReader(isr);
+			StringBuilder sb = new StringBuilder();
+			String line;
+			while ((line = br.readLine()) != null) {
+				sb.append(line).append("\n");
+			}
+			br.close();
+			// Remove trailing newline if original file didn't end with one
+			if (sb.length() > 0 && sb.charAt(sb.length() - 1) == '\n') {
+				sb.setLength(sb.length() - 1);
+			}
+			return sb.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Writes a String to a file with explicit encoding.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var ok = system.writeStringToFile("/tmp/output.txt", content, "UTF-8", false);
+	 * // Append to existing file:
+	 * system.writeStringToFile("/tmp/log.txt", "new line\n", "UTF-8", true);
+	 * </pre>
+	 *
+	 * @param filename
+	 *            Path to the output file
+	 * @param content
+	 *            The string content to write
+	 * @param encoding
+	 *            Character encoding (e.g. "UTF-8"), or null for platform default
+	 * @param append
+	 *            If true, content is appended to an existing file rather than
+	 *            overwriting it
+	 * @return true if write succeeded, false on error
+	 * @see #readFileToString(String, String)
+	 * @since 10.1
+	 */
+	public boolean writeStringToFile(String filename, String content, String encoding, boolean append) {
+		if (filename == null)
+			return false;
+		try {
+			java.io.OutputStream os = new FileOutputStream(filename, append);
+			OutputStreamWriter osw = (encoding != null)
+					? new OutputStreamWriter(os, encoding)
+					: new OutputStreamWriter(os);
+			BufferedWriter bw = new BufferedWriter(osw);
+			bw.write(content != null ? content : "");
+			bw.close();
+			return true;
+		} catch (Exception e) {
+			lastError = e;
+			return false;
+		}
+	}
+
+	/**
+	 * Returns the size of a file in bytes as a string (safe for large files).
+	 * <p>
+	 * The size is returned as a String to avoid JavaScript precision loss for
+	 * files larger than 2^53 bytes.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var size = system.getFileSize("/data/dump.bin");
+	 * task.logmsg("File size: " + size + " bytes");
+	 * </pre>
+	 *
+	 * @param filename
+	 *            Path to the file
+	 * @return File size in bytes as a String, or null if the file does not exist
+	 * @since 10.1
+	 */
+	public String getFileSize(String filename) {
+		if (filename == null)
+			return null;
+		File f = new File(filename);
+		if (!f.exists() || !f.isFile())
+			return null;
+		return Long.toString(f.length());
+	}
+
+	/**
+	 * Tests whether a file exists and is a regular file.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.fileExists("/etc/tdi/keystore.jks")) {
+	 *     // load keystore
+	 * }
+	 * </pre>
+	 *
+	 * @param filename
+	 *            Path to the file
+	 * @return true if the path exists and is a regular file
+	 * @see #directoryExists(String)
+	 * @since 10.1
+	 */
+	public boolean fileExists(String filename) {
+		if (filename == null)
+			return false;
+		File f = new File(filename);
+		return f.exists() && f.isFile();
+	}
+
+	/**
+	 * Tests whether a directory exists.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (!system.directoryExists("/output")) {
+	 *     system.createDirectory("/output", true);
+	 * }
+	 * </pre>
+	 *
+	 * @param dirname
+	 *            Path to the directory
+	 * @return true if the path exists and is a directory
+	 * @see #fileExists(String)
+	 * @see #createDirectory(String, boolean)
+	 * @since 10.1
+	 */
+	public boolean directoryExists(String dirname) {
+		if (dirname == null)
+			return false;
+		File f = new File(dirname);
+		return f.exists() && f.isDirectory();
+	}
+
+	/**
+	 * Creates a directory, optionally creating all parent directories.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * system.createDirectory("/output/reports/2024", true);
+	 * </pre>
+	 *
+	 * @param dirname
+	 *            Path of the directory to create
+	 * @param createParents
+	 *            If true, any missing parent directories are also created
+	 * @return true if the directory was created or already existed
+	 * @see #directoryExists(String)
+	 * @since 10.1
+	 */
+	public boolean createDirectory(String dirname, boolean createParents) {
+		if (dirname == null)
+			return false;
+		File f = new File(dirname);
+		if (f.exists())
+			return f.isDirectory();
+		return createParents ? f.mkdirs() : f.mkdir();
+	}
+
+	/**
+	 * Lists the names of files and directories inside a directory.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var entries = system.listDirectory("/data/input");
+	 * for (var i = 0; i &lt; entries.length; i++) {
+	 *     task.logmsg(entries[i]);
+	 * }
+	 * </pre>
+	 *
+	 * @param dirname
+	 *            Path to the directory to list
+	 * @return Array of entry names (not full paths), or null if the directory
+	 *         does not exist or an error occurs
+	 * @since 10.1
+	 */
+	public String[] listDirectory(String dirname) {
+		if (dirname == null)
+			return null;
+		File f = new File(dirname);
+		if (!f.exists() || !f.isDirectory()) {
+			lastError = new IllegalArgumentException("Not a directory: " + dirname);
+			return null;
+		}
+		String[] list = f.list();
+		return list != null ? list : new String[0];
+	}
+
+	/**
+	 * Returns the last-modified timestamp of a file as a string.
+	 * <p>
+	 * The value is returned as milliseconds-since-epoch in string form to
+	 * preserve full 64-bit precision in the JavaScript environment.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var ts = system.getFileModifiedTime("/data/import.csv");
+	 * var date = system.timestampToDate(ts);
+	 * </pre>
+	 *
+	 * @param filename
+	 *            Path to the file
+	 * @return Last-modified time in milliseconds since epoch as a String, or
+	 *         null if the file does not exist
+	 * @see #timestampToDate(String)
+	 * @since 10.1
+	 */
+	public String getFileModifiedTime(String filename) {
+		if (filename == null)
+			return null;
+		File f = new File(filename);
+		if (!f.exists())
+			return null;
+		return Long.toString(f.lastModified());
+	}
+
+	// =========================================================================
+	// Phase 4: JSON / XML Utility Methods
+	// =========================================================================
+
+	/**
+	 * Parses a JSON string into a Jackson {@link JsonNode} object tree.
+	 * <p>
+	 * The returned {@code JsonNode} can be traversed using Jackson's API or
+	 * passed to other JSON utility methods in this class.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var node = system.parseJSON('{"name":"Alice","age":30}');
+	 * var name = node.get("name").asText();
+	 * </pre>
+	 *
+	 * @param jsonString
+	 *            Valid JSON string
+	 * @return Root {@link JsonNode}, or null on parse error
+	 * @see #toJSON(Object)
+	 * @see #getJSONValue(String, String)
+	 * @since 10.1
+	 */
+	public JsonNode parseJSON(String jsonString) {
+		if (jsonString == null)
+			return null;
+		try {
+			return new ObjectMapper().readTree(jsonString);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Serialises a Java object (Map, List, POJO, etc.) to a JSON string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var map = new java.util.HashMap();
+	 * map.put("name", "Alice");
+	 * map.put("age", 30);
+	 * var json = system.toJSON(map);
+	 * // Result: {"name":"Alice","age":30}
+	 * </pre>
+	 *
+	 * @param obj
+	 *            Object to serialise
+	 * @return JSON string, or null on error
+	 * @see #parseJSON(String)
+	 * @since 10.1
+	 */
+	public String toJSON(Object obj) {
+		if (obj == null)
+			return "null";
+		try {
+			return new ObjectMapper().writeValueAsString(obj);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Validates whether a string is well-formed JSON.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (!system.validateJSON(payload)) {
+	 *     throw "Invalid JSON payload: " + system.lastError;
+	 * }
+	 * </pre>
+	 *
+	 * @param jsonString
+	 *            String to validate
+	 * @return true if the string is valid JSON, false otherwise
+	 * @since 10.1
+	 */
+	public boolean validateJSON(String jsonString) {
+		if (jsonString == null)
+			return false;
+		try {
+			new ObjectMapper().readTree(jsonString);
+			return true;
+		} catch (Exception e) {
+			lastError = e;
+			return false;
+		}
+	}
+
+	/**
+	 * Extracts a value from a JSON string using a simple dot-separated path.
+	 * <p>
+	 * Supports nested objects (dot notation) and array indexing (bracket
+	 * notation). Returns the value as a String.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var json = '{"user":{"name":"Alice","roles":["admin","user"]}}';
+	 * var name = system.getJSONValue(json, "user.name");       // "Alice"
+	 * var role = system.getJSONValue(json, "user.roles[0]");   // "admin"
+	 * </pre>
+	 *
+	 * @param jsonString
+	 *            Valid JSON string
+	 * @param path
+	 *            Dot-separated path with optional bracket array indices
+	 * @return Value at the path as a String, or null if not found
+	 * @see #parseJSON(String)
+	 * @since 10.1
+	 */
+	public String getJSONValue(String jsonString, String path) {
+		if (jsonString == null || path == null)
+			return null;
+		try {
+			JsonNode node = new ObjectMapper().readTree(jsonString);
+			String[] segments = path.split("\\.");
+			for (String segment : segments) {
+				if (node == null)
+					return null;
+				// Handle array indexing e.g. roles[0]
+				Matcher m = Pattern.compile("^(.+?)\\[(\\d+)\\]$").matcher(segment);
+				if (m.matches()) {
+					node = node.path(m.group(1));
+					node = node.path(Integer.parseInt(m.group(2)));
+				} else {
+					node = node.path(segment);
+				}
+			}
+			if (node == null || node.isMissingNode())
+				return null;
+			return node.isTextual() ? node.asText() : node.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Returns a pretty-printed (indented) version of a JSON string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var pretty = system.prettyPrintJSON('{"a":1,"b":2}');
+	 * </pre>
+	 *
+	 * @param jsonString
+	 *            Compact JSON string
+	 * @return Indented JSON string, or null on parse error
+	 * @since 10.1
+	 */
+	public String prettyPrintJSON(String jsonString) {
+		if (jsonString == null)
+			return null;
+		try {
+			ObjectMapper mapper = new ObjectMapper();
+			Object obj = mapper.readValue(jsonString, Object.class);
+			return mapper.writerWithDefaultPrettyPrinter().writeValueAsString(obj);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Returns a pretty-printed (indented) version of an XML string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var pretty = system.prettyPrintXML("&lt;root&gt;&lt;a&gt;1&lt;/a&gt;&lt;/root&gt;");
+	 * </pre>
+	 *
+	 * @param xmlString
+	 *            Compact XML string
+	 * @return Indented XML string, or null on parse error
+	 * @since 10.1
+	 */
+	public String prettyPrintXML(String xmlString) {
+		if (xmlString == null)
+			return null;
+		try {
+			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+			DocumentBuilder db = dbf.newDocumentBuilder();
+			org.w3c.dom.Document doc = db.parse(
+					new java.io.ByteArrayInputStream(xmlString.getBytes("UTF-8")));
+
+			TransformerFactory tf = TransformerFactory.newInstance();
+			Transformer transformer = tf.newTransformer();
+			transformer.setOutputProperty(OutputKeys.INDENT, "yes");
+			transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "2");
+			transformer.setOutputProperty(OutputKeys.OMIT_XML_DECLARATION, "yes");
+
+			StringWriter sw = new StringWriter();
+			transformer.transform(new DOMSource(doc), new StreamResult(sw));
+			return sw.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Validates an XML string for well-formedness.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (!system.validateXML(xmlPayload)) {
+	 *     throw "Malformed XML: " + system.lastError;
+	 * }
+	 * </pre>
+	 *
+	 * @param xmlString
+	 *            XML string to validate
+	 * @return true if the string is well-formed XML, false otherwise
+	 * @since 10.1
+	 */
+	public boolean validateXML(String xmlString) {
+		if (xmlString == null)
+			return false;
+		try {
+			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+			DocumentBuilder db = dbf.newDocumentBuilder();
+			db.parse(new java.io.ByteArrayInputStream(xmlString.getBytes("UTF-8")));
+			return true;
+		} catch (Exception e) {
+			lastError = e;
+			return false;
+		}
+	}
+
+	/**
+	 * Converts a simple XML document to a JSON string.
+	 * <p>
+	 * Element text content becomes a string value; attributes and nested
+	 * elements become object members. Repeated sibling elements become JSON
+	 * arrays.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var json = system.xmlToJSON("&lt;user&gt;&lt;name&gt;Alice&lt;/name&gt;&lt;/user&gt;");
+	 * // Result: {"user":{"name":"Alice"}}
+	 * </pre>
+	 *
+	 * @param xmlString
+	 *            XML string to convert
+	 * @return JSON string, or null on error
+	 * @see #jsonToXML(String, String)
+	 * @since 10.1
+	 */
+	public String xmlToJSON(String xmlString) {
+		if (xmlString == null)
+			return null;
+		try {
+			DocumentBuilderFactory dbf = DocumentBuilderFactory.newInstance();
+			DocumentBuilder db = dbf.newDocumentBuilder();
+			org.w3c.dom.Document doc = db.parse(
+					new java.io.ByteArrayInputStream(xmlString.getBytes("UTF-8")));
+			Map<String, Object> map = new LinkedHashMap<>();
+			map.put(doc.getDocumentElement().getNodeName(),
+					xmlNodeToMap(doc.getDocumentElement()));
+			return new ObjectMapper().writeValueAsString(map);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/** Recursively converts a DOM node to a Map/String for JSON serialisation. */
+	@SuppressWarnings("unchecked")
+	private Object xmlNodeToMap(org.w3c.dom.Node node) {
+		org.w3c.dom.NodeList children = node.getChildNodes();
+		boolean hasElementChildren = false;
+		for (int i = 0; i < children.getLength(); i++) {
+			if (children.item(i).getNodeType() == org.w3c.dom.Node.ELEMENT_NODE) {
+				hasElementChildren = true;
+				break;
+			}
+		}
+		if (!hasElementChildren) {
+			return node.getTextContent();
+		}
+		Map<String, Object> map = new LinkedHashMap<>();
+		for (int i = 0; i < children.getLength(); i++) {
+			org.w3c.dom.Node child = children.item(i);
+			if (child.getNodeType() != org.w3c.dom.Node.ELEMENT_NODE)
+				continue;
+			String name = child.getNodeName();
+			Object value = xmlNodeToMap(child);
+			if (map.containsKey(name)) {
+				Object existing = map.get(name);
+				if (existing instanceof List) {
+					((List<Object>) existing).add(value);
+				} else {
+					List<Object> list = new ArrayList<>();
+					list.add(existing);
+					list.add(value);
+					map.put(name, list);
+				}
+			} else {
+				map.put(name, value);
+			}
+		}
+		return map;
+	}
+
+	/**
+	 * Converts a flat JSON object to an XML string with a specified root element.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var xml = system.jsonToXML('{"name":"Alice","dept":"IT"}', "user");
+	 * // Result: &lt;user&gt;&lt;name&gt;Alice&lt;/name&gt;&lt;dept&gt;IT&lt;/dept&gt;&lt;/user&gt;
+	 * </pre>
+	 *
+	 * @param jsonString
+	 *            JSON string to convert (top-level must be an object)
+	 * @param rootElement
+	 *            Name for the XML root element
+	 * @return XML string, or null on error
+	 * @see #xmlToJSON(String)
+	 * @since 10.1
+	 */
+	public String jsonToXML(String jsonString, String rootElement) {
+		if (jsonString == null)
+			return null;
+		if (rootElement == null || rootElement.isEmpty())
+			rootElement = "root";
+		try {
+			JsonNode node = new ObjectMapper().readTree(jsonString);
+			StringBuilder sb = new StringBuilder("<").append(rootElement).append(">");
+			jsonNodeToXML(node, sb);
+			sb.append("</").append(rootElement).append(">");
+			return sb.toString();
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/** Recursively serialises a JsonNode to XML fragment. */
+	private void jsonNodeToXML(JsonNode node, StringBuilder sb) {
+		if (node.isObject()) {
+			Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+			while (fields.hasNext()) {
+				Map.Entry<String, JsonNode> field = fields.next();
+				String key = field.getKey();
+				JsonNode val = field.getValue();
+				sb.append("<").append(key).append(">");
+				jsonNodeToXML(val, sb);
+				sb.append("</").append(key).append(">");
+			}
+		} else if (node.isArray()) {
+			for (JsonNode item : node) {
+				jsonNodeToXML(item, sb);
+			}
+		} else {
+			// Escape XML special characters in text
+			String text = node.asText();
+			sb.append(text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;"));
+		}
+	}
+
+	// =========================================================================
+	// Phase 4: Collection Utility Methods
+	// =========================================================================
+
+	/**
+	 * Filters a list of {@link Entry} objects, keeping only those where the
+	 * named attribute equals the given value.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var admins = system.filterList(users, "department", "IT");
+	 * </pre>
+	 *
+	 * @param list
+	 *            List of Entry objects to filter
+	 * @param attribute
+	 *            Attribute name to test
+	 * @param value
+	 *            Value to match (uses {@code toString()} comparison)
+	 * @return New list containing only matching entries
+	 * @see #findInList(List, String, Object)
+	 * @since 10.1
+	 */
+	public List<Entry> filterList(List<Entry> list, String attribute, Object value) {
+		List<Entry> result = new ArrayList<>();
+		if (list == null || attribute == null)
+			return result;
+		String matchVal = (value != null) ? value.toString() : null;
+		for (Entry e : list) {
+			try {
+				Object v = e.getAttribute(attribute);
+				if (v == null && matchVal == null) {
+					result.add(e);
+				} else if (v != null && v.toString().equals(matchVal)) {
+					result.add(e);
+				}
+			} catch (Exception ex) {
+				// skip entry on access error
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Sorts a list of {@link Entry} objects by the named attribute.
+	 * <p>
+	 * The sort is performed using lexicographic ordering on the attribute's
+	 * string value. Null attribute values are sorted to the end.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var sorted = system.sortList(users, "sn", true);  // ascending by surname
+	 * </pre>
+	 *
+	 * @param list
+	 *            List of Entry objects to sort (sorted in-place and returned)
+	 * @param attribute
+	 *            Attribute name to sort by
+	 * @param ascending
+	 *            true for ascending, false for descending
+	 * @return Sorted list (same list instance)
+	 * @since 10.1
+	 */
+	public List<Entry> sortList(List<Entry> list, final String attribute, final boolean ascending) {
+		if (list == null || attribute == null)
+			return list;
+		Collections.sort(list, new Comparator<Entry>() {
+			public int compare(Entry a, Entry b) {
+				try {
+					Object va = a.getAttribute(attribute);
+					Object vb = b.getAttribute(attribute);
+					if (va == null && vb == null) return 0;
+					if (va == null) return ascending ? 1 : -1;
+					if (vb == null) return ascending ? -1 : 1;
+					int cmp = va.toString().compareTo(vb.toString());
+					return ascending ? cmp : -cmp;
+				} catch (Exception e) {
+					return 0;
+				}
+			}
+		});
+		return list;
+	}
+
+	/**
+	 * Extracts the values of a named attribute from every entry in a list.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var emails = system.mapList(users, "mail");
+	 * // Result: ["alice@example.com", "bob@example.com", ...]
+	 * </pre>
+	 *
+	 * @param list
+	 *            List of Entry objects
+	 * @param attribute
+	 *            Attribute name to extract from each entry
+	 * @return List of string values (null attribute values are included as null)
+	 * @since 10.1
+	 */
+	public List<String> mapList(List<Entry> list, String attribute) {
+		List<String> result = new ArrayList<>();
+		if (list == null || attribute == null)
+			return result;
+		for (Entry e : list) {
+			try {
+				Object v = e.getAttribute(attribute);
+				result.add(v != null ? v.toString() : null);
+			} catch (Exception ex) {
+				result.add(null);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Finds the first {@link Entry} in a list where the named attribute equals
+	 * the given value.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var alice = system.findInList(users, "uid", "alice");
+	 * if (alice != null) { ... }
+	 * </pre>
+	 *
+	 * @param list
+	 *            List of Entry objects to search
+	 * @param attribute
+	 *            Attribute name to test
+	 * @param value
+	 *            Value to match
+	 * @return First matching Entry, or null if not found
+	 * @see #filterList(List, String, Object)
+	 * @since 10.1
+	 */
+	public Entry findInList(List<Entry> list, String attribute, Object value) {
+		if (list == null || attribute == null)
+			return null;
+		String matchVal = (value != null) ? value.toString() : null;
+		for (Entry e : list) {
+			try {
+				Object v = e.getAttribute(attribute);
+				if (v == null && matchVal == null) return e;
+				if (v != null && v.toString().equals(matchVal)) return e;
+			} catch (Exception ex) {
+				// skip
+			}
+		}
+		return null;
+	}
+
+	/**
+	 * Groups a list of {@link Entry} objects by the values of a named attribute.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var byDept = system.groupBy(users, "department");
+	 * var itUsers = byDept.get("IT");
+	 * </pre>
+	 *
+	 * @param list
+	 *            List of Entry objects to group
+	 * @param attribute
+	 *            Attribute name to group by
+	 * @return Map from attribute value (String) to List of matching entries
+	 * @since 10.1
+	 */
+	public Map<String, List<Entry>> groupBy(List<Entry> list, String attribute) {
+		Map<String, List<Entry>> result = new LinkedHashMap<>();
+		if (list == null || attribute == null)
+			return result;
+		for (Entry e : list) {
+			try {
+				Object v = e.getAttribute(attribute);
+				String key = (v != null) ? v.toString() : "__null__";
+				if (!result.containsKey(key)) {
+					result.put(key, new ArrayList<Entry>());
+				}
+				result.get(key).add(e);
+			} catch (Exception ex) {
+				// skip
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Returns a list with duplicate entries removed, based on the value of a
+	 * named attribute.
+	 * <p>
+	 * The first occurrence of each attribute value is retained; subsequent
+	 * duplicates are discarded.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var unique = system.distinctList(entries, "mail");
+	 * </pre>
+	 *
+	 * @param list
+	 *            List of Entry objects
+	 * @param attribute
+	 *            Attribute name used as the uniqueness key
+	 * @return New list with duplicates removed
+	 * @since 10.1
+	 */
+	public List<Entry> distinctList(List<Entry> list, String attribute) {
+		List<Entry> result = new ArrayList<>();
+		java.util.Set<String> seen = new HashSet<>();
+		if (list == null || attribute == null)
+			return result;
+		for (Entry e : list) {
+			try {
+				Object v = e.getAttribute(attribute);
+				String key = (v != null) ? v.toString() : "__null__";
+				if (seen.add(key)) {
+					result.add(e);
+				}
+			} catch (Exception ex) {
+				result.add(e);
+			}
+		}
+		return result;
+	}
+
+	/**
+	 * Returns a reversed copy of a list.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var reversed = system.reverseList(entries);
+	 * </pre>
+	 *
+	 * @param list
+	 *            List to reverse
+	 * @return New list in reverse order
+	 * @since 10.1
+	 */
+	public <T> List<T> reverseList(List<T> list) {
+		List<T> result = new ArrayList<>();
+		if (list == null)
+			return result;
+		for (int i = list.size() - 1; i >= 0; i--) {
+			result.add(list.get(i));
+		}
+		return result;
+	}
+
+	/**
+	 * Returns a sub-list (slice) of a list between two indices.
+	 * <p>
+	 * Indices are zero-based and clamped to list bounds. The {@code end} index
+	 * is exclusive (consistent with {@link List#subList}).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var page = system.sliceList(entries, 0, 10);   // first 10
+	 * var next = system.sliceList(entries, 10, 20);  // items 10-19
+	 * </pre>
+	 *
+	 * @param list
+	 *            Source list
+	 * @param start
+	 *            Start index (inclusive, zero-based)
+	 * @param end
+	 *            End index (exclusive); use list.size() for "to the end"
+	 * @return Sub-list view
+	 * @since 10.1
+	 */
+	public <T> List<T> sliceList(List<T> list, int start, int end) {
+		if (list == null)
+			return new ArrayList<T>();
+		int s = Math.max(0, start);
+		int e = Math.min(list.size(), end);
+		if (s >= e)
+			return new ArrayList<T>();
+		return new ArrayList<T>(list.subList(s, e));
+	}
+
+	// =========================================================================
+	// Phase 4: Encoding / Decoding Methods
+	// =========================================================================
+
+	/**
+	 * URL-encodes a string using the specified character encoding.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var encoded = system.urlEncode("hello world &amp; more", "UTF-8");
+	 * // Result: "hello+world+%26+more"
+	 * </pre>
+	 *
+	 * @param str
+	 *            The string to encode
+	 * @param encoding
+	 *            Character encoding (e.g. "UTF-8"), or null for UTF-8
+	 * @return URL-encoded string, or null on error
+	 * @see #urlDecode(String, String)
+	 * @since 10.1
+	 */
+	public String urlEncode(String str, String encoding) {
+		if (str == null)
+			return null;
+		try {
+			String enc = (encoding != null && !encoding.isEmpty()) ? encoding : "UTF-8";
+			return java.net.URLEncoder.encode(str, enc);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * URL-decodes a string using the specified character encoding.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var decoded = system.urlDecode("hello+world+%26+more", "UTF-8");
+	 * // Result: "hello world &amp; more"
+	 * </pre>
+	 *
+	 * @param str
+	 *            The URL-encoded string to decode
+	 * @param encoding
+	 *            Character encoding (e.g. "UTF-8"), or null for UTF-8
+	 * @return Decoded string, or null on error
+	 * @see #urlEncode(String, String)
+	 * @since 10.1
+	 */
+	public String urlDecode(String str, String encoding) {
+		if (str == null)
+			return null;
+		try {
+			String enc = (encoding != null && !encoding.isEmpty()) ? encoding : "UTF-8";
+			return java.net.URLDecoder.decode(str, enc);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * HTML-encodes a string, converting special characters to HTML entities.
+	 * <p>
+	 * Encodes {@code &}, {@code <}, {@code >}, {@code "} and {@code '}.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var safe = system.htmlEncode("&lt;script&gt;alert('xss')&lt;/script&gt;");
+	 * // Result: "&amp;lt;script&amp;gt;alert(&amp;#39;xss&amp;#39;)&amp;lt;/script&amp;gt;"
+	 * </pre>
+	 *
+	 * @param str
+	 *            String to encode
+	 * @return HTML-encoded string
+	 * @see #htmlDecode(String)
+	 * @since 10.1
+	 */
+	public String htmlEncode(String str) {
+		if (str == null)
+			return null;
+		return str.replace("&", "&amp;")
+				.replace("<", "&lt;")
+				.replace(">", "&gt;")
+				.replace("\"", "&quot;")
+				.replace("'", "&#39;");
+	}
+
+	/**
+	 * HTML-decodes a string, converting HTML entities back to characters.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var text = system.htmlDecode("Hello &amp;amp; World");
+	 * // Result: "Hello &amp; World"
+	 * </pre>
+	 *
+	 * @param str
+	 *            HTML-encoded string
+	 * @return Decoded string
+	 * @see #htmlEncode(String)
+	 * @since 10.1
+	 */
+	public String htmlDecode(String str) {
+		if (str == null)
+			return null;
+		return str.replace("&amp;", "&")
+				.replace("&lt;", "<")
+				.replace("&gt;", ">")
+				.replace("&quot;", "\"")
+				.replace("&#39;", "'");
+	}
+
+	/**
+	 * Base64-encodes a string with optional URL-safe alphabet.
+	 * <p>
+	 * Standard Base64 uses {@code +} and {@code /}; URL-safe Base64 replaces
+	 * these with {@code -} and {@code _} (RFC 4648 §5).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var encoded = system.base64Encode("Hello World", "UTF-8", false);
+	 * var urlSafe = system.base64Encode("Hello World", "UTF-8", true);
+	 * </pre>
+	 *
+	 * @param string
+	 *            String to encode
+	 * @param encoding
+	 *            Source character encoding (e.g. "UTF-8")
+	 * @param urlSafe
+	 *            If true, use URL-safe alphabet (no padding, {@code -} and {@code _})
+	 * @return Base64-encoded string, or null on error
+	 * @see #base64Decode(String, String, boolean)
+	 * @since 10.1
+	 */
+	public String base64Encode(String string, String encoding, boolean urlSafe) {
+		if (string == null)
+			return null;
+		try {
+			String enc = (encoding != null && !encoding.isEmpty()) ? encoding : "UTF-8";
+			byte[] bytes = string.getBytes(enc);
+			if (urlSafe) {
+				return java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
+			} else {
+				return java.util.Base64.getEncoder().encodeToString(bytes);
+			}
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	/**
+	 * Base64-decodes a string with optional URL-safe alphabet support.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var decoded = system.base64Decode("SGVsbG8gV29ybGQ=", "UTF-8", false);
+	 * // Result: "Hello World"
+	 * </pre>
+	 *
+	 * @param str
+	 *            Base64-encoded string
+	 * @param encoding
+	 *            Target character encoding for the decoded bytes (e.g. "UTF-8")
+	 * @param urlSafe
+	 *            If true, use URL-safe alphabet decoder
+	 * @return Decoded string, or null on error
+	 * @see #base64Encode(String, String, boolean)
+	 * @since 10.1
+	 */
+	public String base64Decode(String str, String encoding, boolean urlSafe) {
+		if (str == null)
+			return null;
+		try {
+			String enc = (encoding != null && !encoding.isEmpty()) ? encoding : "UTF-8";
+			byte[] bytes;
+			if (urlSafe) {
+				bytes = java.util.Base64.getUrlDecoder().decode(str);
+			} else {
+				bytes = java.util.Base64.getDecoder().decode(str);
+			}
+			return new String(bytes, enc);
+		} catch (Exception e) {
+			lastError = e;
+			return null;
+		}
+	}
+
+	// =========================================================================
+	// Phase 4: Validation and Security Methods
+	// =========================================================================
+
+	/**
+	 * Validates an email address format using RFC 5322-inspired pattern.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (!system.validateEmail(work.getString("mail"))) {
+	 *     throw "Invalid email: " + work.getString("mail");
+	 * }
+	 * </pre>
+	 *
+	 * @param email
+	 *            Email address to validate
+	 * @return true if the format is valid
+	 * @since 10.1
+	 */
+	public boolean validateEmail(String email) {
+		if (email == null || email.trim().isEmpty())
+			return false;
+		Pattern p = Pattern.compile(
+				"^[a-zA-Z0-9._%+\\-]+@[a-zA-Z0-9.\\-]+\\.[a-zA-Z]{2,}$");
+		return p.matcher(email.trim()).matches();
+	}
+
+	/**
+	 * Validates a URL string (http or https).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.validateURL(endpoint)) {
+	 *     // safe to use
+	 * }
+	 * </pre>
+	 *
+	 * @param url
+	 *            URL string to validate
+	 * @return true if the URL has a valid http/https format
+	 * @since 10.1
+	 */
+	public boolean validateURL(String url) {
+		if (url == null || url.trim().isEmpty())
+			return false;
+		try {
+			java.net.URL u = new java.net.URL(url.trim());
+			String proto = u.getProtocol();
+			return "http".equalsIgnoreCase(proto) || "https".equalsIgnoreCase(proto);
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Validates an IPv4 or IPv6 address string.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (system.validateIPAddress("192.168.1.1")) { ... }
+	 * if (system.validateIPAddress("::1")) { ... }
+	 * </pre>
+	 *
+	 * @param ip
+	 *            IP address string to validate
+	 * @return true if the string is a valid IPv4 or IPv6 address
+	 * @since 10.1
+	 */
+	public boolean validateIPAddress(String ip) {
+		if (ip == null || ip.trim().isEmpty())
+			return false;
+		try {
+			java.net.InetAddress.getByName(ip.trim());
+			// InetAddress.getByName also does DNS lookup for hostnames;
+			// use pattern check to restrict to numeric addresses only
+			Pattern ipv4 = Pattern.compile(
+					"^(\\d{1,3}\\.){3}\\d{1,3}$");
+			Pattern ipv6 = Pattern.compile(
+					"^([0-9a-fA-F]{0,4}:){2,7}[0-9a-fA-F]{0,4}$");
+			String trimmed = ip.trim();
+			return ipv4.matcher(trimmed).matches() || ipv6.matcher(trimmed).matches();
+		} catch (Exception e) {
+			return false;
+		}
+	}
+
+	/**
+	 * Validates a password against configurable complexity rules.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * if (!system.validatePassword(newPassword, 8, true)) {
+	 *     throw "Password must be 8+ chars and include a special character";
+	 * }
+	 * </pre>
+	 *
+	 * @param password
+	 *            Password string to validate
+	 * @param minLength
+	 *            Minimum required length
+	 * @param requireSpecial
+	 *            If true, at least one special character ({@code !@#$%^&*}) is required
+	 * @return true if the password meets all requirements
+	 * @since 10.1
+	 */
+	public boolean validatePassword(String password, int minLength, boolean requireSpecial) {
+		if (password == null)
+			return false;
+		if (password.length() < minLength)
+			return false;
+		if (requireSpecial) {
+			Pattern special = Pattern.compile("[!@#$%^&*()_+\\-=\\[\\]{};':\"\\\\|,.<>\\/?]");
+			if (!special.matcher(password).find())
+				return false;
+		}
+		return true;
+	}
+
+	/**
+	 * Sanitises an HTML string by stripping potentially dangerous tags and
+	 * attributes to prevent XSS attacks.
+	 * <p>
+	 * Removes {@code <script>}, {@code <iframe>}, {@code <object>},
+	 * {@code <embed>}, and inline event handler attributes
+	 * ({@code on*="..."}).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var safe = system.sanitizeHTML(userInput);
+	 * </pre>
+	 *
+	 * @param html
+	 *            HTML string to sanitise
+	 * @return Sanitised HTML string
+	 * @since 10.1
+	 */
+	public String sanitizeHTML(String html) {
+		if (html == null)
+			return null;
+		String result = html;
+		// Remove dangerous tags (case-insensitive, including attributes)
+		result = result.replaceAll("(?i)<script[^>]*>[\\s\\S]*?</script>", "");
+		result = result.replaceAll("(?i)<iframe[^>]*>[\\s\\S]*?</iframe>", "");
+		result = result.replaceAll("(?i)<object[^>]*>[\\s\\S]*?</object>", "");
+		result = result.replaceAll("(?i)<embed[^>]*>", "");
+		// Remove inline event handlers
+		result = result.replaceAll("(?i)\\s+on\\w+\\s*=\\s*\"[^\"]*\"", "");
+		result = result.replaceAll("(?i)\\s+on\\w+\\s*=\\s*'[^']*'", "");
+		return result;
+	}
+
+	/**
+	 * Escapes a string for safe use in a SQL query, preventing SQL injection.
+	 * <p>
+	 * Escapes single quotes by doubling them. For production use, always prefer
+	 * parameterised queries; this method is a last-resort fallback.
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var safe = system.escapeSQL(userInput);
+	 * var sql = "SELECT * FROM users WHERE cn = '" + safe + "'";
+	 * </pre>
+	 *
+	 * @param input
+	 *            String to escape
+	 * @return SQL-escaped string
+	 * @since 10.1
+	 */
+	public String escapeSQL(String input) {
+		if (input == null)
+			return null;
+		return input.replace("'", "''").replace("\\", "\\\\");
+	}
+
+	/**
+	 * Sanitises a filename by removing or replacing characters that are illegal
+	 * on common file systems (Windows, Linux, macOS).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var safe = system.sanitizeFilename("report: Jan/2024.xlsx");
+	 * // Result: "report_ Jan_2024.xlsx"
+	 * </pre>
+	 *
+	 * @param filename
+	 *            Filename (not a path) to sanitise
+	 * @return Sanitised filename safe for all major operating systems
+	 * @since 10.1
+	 */
+	public String sanitizeFilename(String filename) {
+		if (filename == null)
+			return null;
+		// Replace characters illegal on Windows/Linux/macOS
+		String safe = filename.replaceAll("[\\\\/:*?\"<>|]", "_");
+		// Remove control characters
+		safe = safe.replaceAll("[\\x00-\\x1f\\x7f]", "");
+		// Trim leading/trailing dots and spaces (Windows restriction)
+		safe = safe.replaceAll("^[. ]+|[. ]+$", "");
+		return safe.isEmpty() ? "_" : safe;
+	}
+
+	/**
+	 * Generates a random UUID (Universally Unique Identifier) as a string.
+	 * <p>
+	 * The returned string uses the standard 8-4-4-4-12 hyphenated format
+	 * (UUID version 4, randomly generated).
+	 * <p>
+	 * <b>Example:</b>
+	 *
+	 * <pre>
+	 * var id = system.generateUUID();
+	 * work.put("requestId", id);
+	 * </pre>
+	 *
+	 * @return UUID string in the form {@code xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx}
+	 * @since 10.1
+	 */
+	public String generateUUID() {
+		return UUID.randomUUID().toString();
+	}
+
 
 }
 
+
+/** Internal error listener implementation for XML transformations. */
 class ErrorListenerImpl implements javax.xml.transform.ErrorListener {
+	/** The captured exception. */
 	public java.lang.Exception excep = null;
 
+	/** Creates a new ErrorListenerImpl. */
 	ErrorListenerImpl() {
 		excep = null;
 	}
 
+	/**
+	 * Receives notification of a recoverable error. Ignored — the transformer
+	 * continues processing.
+	 *
+	 * @param e the transformer exception describing the warning
+	 */
 	public void warning(javax.xml.transform.TransformerException e) {
 		// Do Nothing.
 
 	}
 
+	/**
+	 * Receives notification of a recoverable error. Stores the exception so the
+	 * caller can inspect it after the transformation.
+	 *
+	 * @param e the transformer exception describing the error
+	 */
 	public void error(javax.xml.transform.TransformerException e) {
 		this.excep = e;
 	}
 
+	/**
+	 * Receives notification of a non-recoverable error. Stores the exception so
+	 * the caller can inspect it after the transformation.
+	 *
+	 * @param e the transformer exception describing the fatal error
+	 */
 	public void fatalError(javax.xml.transform.TransformerException e) {
 		this.excep = e;
 	}
 }
+
