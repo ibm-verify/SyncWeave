@@ -1,0 +1,230 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<MetamergeConfig created="Phase 1" version="10.0.0">
+	<Folder name="Connectors">
+		<Connector name="MCPServerConnector">
+			<SupportedModes>Server,Iterator</SupportedModes>
+			<Configuration>
+				<parameter name="connectorType">com.vdi.di.connector.McpServerConnector</parameter>
+				<parameter name="parserOption">Optional</parameter>
+				<!-- serverReply=true makes the AssemblyLine call replyEntry() at end of
+				     cycle for the tools/call path (which returns a work Entry). Without
+				     it, only the direct in-getNextEntry replies fire and tools/call
+				     hangs the client. Same flag the stock HTTPServerConnector sets. -->
+				<parameter name="serverReply">true</parameter>
+				<parameter name="endpointPath">/mcp</parameter>
+				<parameter name="bindAddress">127.0.0.1</parameter>
+				<parameter name="tcpPort">8443</parameter>
+				<parameter name="useSSL">false</parameter>
+				<parameter name="needClientAuth">false</parameter>
+				<parameter name="authMode">bearer</parameter>
+				<parameter name="bearerToken"></parameter>
+				<parameter name="toolCatalog">[]</parameter>
+				<parameter name="allowedOrigins"></parameter>
+				<parameter name="healthPath"></parameter>
+				<parameter name="maxRequestBytes">0</parameter>
+				<parameter name="actorHeader"></parameter>
+			</Configuration>
+			<Schema name="Input">
+				<SchemaItem>
+					<Name>http.body</Name>
+					<Syntax>String</Syntax>
+					<Presence>Always</Presence>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.tool</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.requestId</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.protocolVersion</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.arguments</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.actor</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.actorCn</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+			</Schema>
+			<Schema name="Output">
+				<SchemaItem>
+					<Name>$mcp.result</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.structured</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+				<SchemaItem>
+					<Name>$mcp.isError</Name>
+					<Syntax>String</Syntax>
+				</SchemaItem>
+			</Schema>
+		</Connector>
+	</Folder>
+	<Folder name="Forms">
+		<Form name="com.vdi.di.connector.McpServerConnector">
+			<TranslationFile>NLS/idi_conn_mcpserver</TranslationFile>
+			<FormSectionNames>
+				<ListItem>General</ListItem>
+				<ListItem>Security</ListItem>
+				<ListItem>Advanced</ListItem>
+			</FormSectionNames>
+			<FormSection name="General">
+				<FormSectionNames>
+					<ListItem>tcpPort</ListItem>
+					<ListItem>bindAddress</ListItem>
+					<ListItem>endpointPath</ListItem>
+					<ListItem>toolCatalog</ListItem>
+					<ListItem>$GLOBAL.userComment</ListItem>
+					<ListItem>$GLOBAL.debug</ListItem>
+				</FormSectionNames>
+			</FormSection>
+			<FormSection name="Security">
+				<parameter name="title">Security</parameter>
+				<parameter name="initiallyExpanded">true</parameter>
+				<FormSectionNames>
+					<ListItem>authMode</ListItem>
+					<ListItem>bearerToken</ListItem>
+					<ListItem>allowedOrigins</ListItem>
+					<ListItem>useSSL</ListItem>
+					<ListItem>needClientAuth</ListItem>
+				</FormSectionNames>
+			</FormSection>
+			<FormSection name="Advanced">
+				<parameter name="title">Advanced</parameter>
+				<parameter name="initiallyExpanded">false</parameter>
+				<FormSectionNames>
+					<ListItem>healthPath</ListItem>
+					<ListItem>maxRequestBytes</ListItem>
+					<ListItem>actorHeader</ListItem>
+				</FormSectionNames>
+			</FormSection>
+			<FormItemNames>
+				<ListItem>tcpPort</ListItem>
+				<ListItem>bindAddress</ListItem>
+				<ListItem>endpointPath</ListItem>
+				<ListItem>toolCatalog</ListItem>
+				<ListItem>authMode</ListItem>
+				<ListItem>bearerToken</ListItem>
+				<ListItem>allowedOrigins</ListItem>
+				<ListItem>useSSL</ListItem>
+				<ListItem>needClientAuth</ListItem>
+				<ListItem>healthPath</ListItem>
+				<ListItem>maxRequestBytes</ListItem>
+				<ListItem>actorHeader</ListItem>
+				<ListItem>$GLOBAL.debug</ListItem>
+			</FormItemNames>
+			<FormItem name="tcpPort">
+				<parameter name="Required">true</parameter>
+				<parameter name="description">TCP_PORT_DESC</parameter>
+				<parameter name="label">TCP_PORT_LABEL</parameter>
+				<parameter name="syntax">Number</parameter>
+			</FormItem>
+			<FormItem name="bindAddress">
+				<parameter name="description">BIND_ADDR_DESC</parameter>
+				<parameter name="label">BIND_ADDR_LABEL</parameter>
+			</FormItem>
+			<FormItem name="endpointPath">
+				<parameter name="description">ENDPOINT_PATH_DESC</parameter>
+				<parameter name="label">ENDPOINT_PATH_LABEL</parameter>
+			</FormItem>
+			<FormItem name="toolCatalog">
+				<parameter name="description">TOOL_CATALOG_DESC</parameter>
+				<parameter name="label">TOOL_CATALOG_LABEL</parameter>
+				<parameter name="syntax">textarea</parameter>
+			</FormItem>
+			<FormItem name="authMode">
+				<Values>
+					<ListItem>none</ListItem>
+					<ListItem>bearer</ListItem>
+					<ListItem>mtls</ListItem>
+				</Values>
+				<parameter name="description">AUTH_MODE_DESC</parameter>
+				<parameter name="label">AUTH_MODE_LABEL</parameter>
+				<parameter name="syntax">droplist</parameter>
+			</FormItem>
+			<FormItem name="bearerToken">
+				<parameter name="description">BEARER_TOKEN_DESC</parameter>
+				<parameter name="label">BEARER_TOKEN_LABEL</parameter>
+				<parameter name="syntax">PASSWORD</parameter>
+				<parameter name="script">generateBearerToken</parameter>
+				<parameter name="scriptLabel">GEN_TOKEN_BTN_LABEL</parameter>
+				<parameter name="scripthelp">GEN_TOKEN_BTN_HELP</parameter>
+			</FormItem>
+			<FormItem name="allowedOrigins">
+				<parameter name="description">ALLOWED_ORIGINS_DESC</parameter>
+				<parameter name="label">ALLOWED_ORIGINS_LABEL</parameter>
+			</FormItem>
+			<FormItem name="useSSL">
+				<parameter name="description">USE_SSL_DESC</parameter>
+				<parameter name="label">USE_SSL_LABEL</parameter>
+				<parameter name="syntax">BOOLEAN</parameter>
+			</FormItem>
+			<FormItem name="needClientAuth">
+				<parameter name="description">CLIENT_AUTH_DESC</parameter>
+				<parameter name="label">CLIENT_AUTH_LABEL</parameter>
+				<parameter name="syntax">BOOLEAN</parameter>
+			</FormItem>
+			<FormItem name="healthPath">
+				<parameter name="description">HEALTH_PATH_DESC</parameter>
+				<parameter name="label">HEALTH_PATH_LABEL</parameter>
+			</FormItem>
+			<FormItem name="maxRequestBytes">
+				<parameter name="description">MAX_REQ_BYTES_DESC</parameter>
+				<parameter name="label">MAX_REQ_BYTES_LABEL</parameter>
+				<parameter name="syntax">Number</parameter>
+			</FormItem>
+			<FormItem name="actorHeader">
+				<parameter name="description">ACTOR_HEADER_DESC</parameter>
+				<parameter name="label">ACTOR_HEADER_LABEL</parameter>
+			</FormItem>
+			<parameter name="title">CONN_TITLE</parameter>
+			<parameter name="formscript"><![CDATA[
+function generateBearerToken() {
+	// 32 random bytes -> 64 hex chars (~256 bits). Built entirely Java-side to
+	// avoid IBM JScript engine quirks with byte[]/regex/JS-vs-Java string methods.
+	var sr = new Packages.java.security.SecureRandom();
+	var sb = new Packages.java.lang.StringBuilder();
+	for (var i = 0; i < 32; i++) {
+		// nextInt(256) -> 0..255; +256 -> "100".."1ff"; drop the leading 1 => zero-padded 2-char hex.
+		sb.append(Packages.java.lang.Integer.toHexString(sr.nextInt(256) + 256).substring(1));
+	}
+	var token = "" + sb.toString();
+	form.setConfig("bearerToken", token);
+	form.updateControl("bearerToken");
+	// The CE is an Eclipse/SWT app, so use the SWT clipboard — AWT's Toolkit
+	// clipboard doesn't reliably reach the OS pasteboard from SWT, and AWT modal
+	// dialogs freeze the CE on macOS. This is non-modal: worst case it falls into
+	// the catch (copied=false), it cannot hang the CE.
+	var copied = false;
+	try {
+		var Display = Packages.org.eclipse.swt.widgets.Display;
+		var display = Display.getCurrent();
+		if (display == null) {
+			display = Display.getDefault();
+		}
+		var clip = new Packages.org.eclipse.swt.dnd.Clipboard(display);
+		clip.setContents([token], [Packages.org.eclipse.swt.dnd.TextTransfer.getInstance()]);
+		clip.dispose();
+		copied = true;
+	} catch (e) {
+		copied = false;
+	}
+	// form.alert is the CE's own properly-parented dialog (safe, no hang).
+	var note = copied ? form.translate("GEN_TOKEN_COPIED") : form.translate("GEN_TOKEN_NOCOPY");
+	form.alert(form.translate("GEN_TOKEN_MSG") + "\n\n" + token + "\n\n" + note);
+}
+]]></parameter>
+		</Form>
+	</Folder>
+</MetamergeConfig>

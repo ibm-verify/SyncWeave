@@ -1,0 +1,1616 @@
+<?xml version="1.0" encoding="UTF-8"?><MetamergeConfig IDIversion="Created by SDI10.0.0.5 - 2025-04-22" created="Thu Jun 18 19:21:16 CDT 2026" createdBy="jason" modified="Wed Sep 30 13:35:36 CDT 2026" modifiedBy="jason" version="7.1.1">
+    <Folder name="AssemblyLines">
+        
+    <AssemblyLine name="MCP_Smoke_Test">
+            <ModTime>1790435450920</ModTime>
+            <Settings/>
+            <Hooks/>
+            <CheckpointConfig/>
+            <SandboxConfig/>
+            <SimulationConfig>
+                <SimulationStates>
+                    <Component name="DumpWorkEntry" state="Enabled"/>
+                    <Component name="MCPServerConnection" state="Enabled"/>
+                </SimulationStates>
+                <ProxySettings/>
+            </SimulationConfig>
+            <LogConfig/>
+            <ContainerEF name="EntryFeedContainer">
+                <ModTime>1790435450920</ModTime>
+                <Connector name="MCPServerConnection">
+                    <InheritFrom>system:/Connectors/MCPServerConnector</InheritFrom>
+                    <ModTime>1790435450920</ModTime>
+                    <ConnectorMode>Server</ConnectorMode>
+                    <ConnectorState>Enabled</ConnectorState>
+                    <Configuration>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790435450920</ModTime>
+                        <parameter name="allowedOrigins">https://good.example</parameter>
+                        <parameter name="authMode">bearer</parameter>
+                        <parameter encrypted="true" name="bearerToken"></parameter>
+                        <parameter name="debug">true</parameter>
+                        <parameter name="healthPath">/health</parameter>
+                        <parameter name="toolCatalog"><![CDATA[[
+  {
+    "name": "echo",
+    "description": "Echoes back whatever text is sent, to verify the request/response round-trip.",
+    "inputSchema": {
+      "type": "object",
+      "properties": { "text": { "type": "string" } },
+      "required": ["text"]
+    }
+  },
+  {
+    "name": "server_time",
+    "description": "Returns the VDI server's current time. Takes no arguments.",
+    "inputSchema": { "type": "object", "properties": {} }
+  }
+]]]></parameter>
+                    </Configuration>
+                    <Parser>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1781878732708</ModTime>
+                    </Parser>
+                    <AttributeMap name="Input">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1781878856307</ModTime>
+                        <AttributeMapItem>
+                            <Name>$mcp.arguments</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.arguments</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>$mcp.protocolVersion</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.protocolVersion</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>$mcp.requestId</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.requestId</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>$mcp.tool</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.tool</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>http.body</Name>
+                            <Type>simple</Type>
+                            <Simple>http.body</Simple>
+                        </AttributeMapItem>
+                    </AttributeMap>
+                    <AttributeMap name="Output">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1781878860020</ModTime>
+                        <AttributeMapItem>
+                            <Name>$mcp.isError</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.isError</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>$mcp.result</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.result</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>$mcp.structured</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.structured</Simple>
+                        </AttributeMapItem>
+                    </AttributeMap>
+                    <DeltaSettings/>
+                    <Schema name="Input">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1781878732708</ModTime>
+                    </Schema>
+                    <Schema name="Output">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1781878732708</ModTime>
+                    </Schema>
+                    <LinkCriteria>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1781878732708</ModTime>
+                    </LinkCriteria>
+                    <Hooks>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1781878732708</ModTime>
+                    </Hooks>
+                    <CheckpointConfig/>
+                    <SandboxConfig/>
+                    <Reconnect>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ReconnectRules/>
+                    </Reconnect>
+                    <Operations/>
+                    <PoolDefinition>
+                        <InheritFrom>[parent]</InheritFrom>
+                    </PoolDefinition>
+                    <PoolInstance/>
+                </Connector>
+            </ContainerEF>
+            <ContainerDF name="DataFlowContainer">
+                <ModTime>1781910645285</ModTime>
+                <Script name="DumpWorkEntry">
+                    <ModTime>1781910645285</ModTime>
+                    <parameter name="script"><![CDATA[var tool = work.getString("$mcp.tool");
+
+var argsJson = work.getString("$mcp.arguments");
+var args = com.ibm.json.java.JSONObject.parse(argsJson);
+
+if (tool == "echo") {
+    var text = args.get("text");
+    work.setAttribute("$mcp.result", "echo: " + text);
+} else if (tool == "server_time") {
+    var now = new java.util.Date();
+    work.setAttribute("$mcp.result", now.toString());
+    var structured = new com.ibm.json.java.JSONObject();
+    structured.put("epochMillis", now.getTime());
+    structured.put("iso", now.toInstant().toString());
+    work.setAttribute("$mcp.structured", structured.serialize());
+} else {
+    work.setAttribute("$mcp.isError", "true");
+    work.setAttribute("$mcp.result", "Unknown tool: " + tool);
+}
+
+task.logmsg("Check work:")
+task.dumpEntry(work)]]></parameter>
+                </Script>
+            </ContainerDF>
+            <ThreadOptions/>
+            <Operations/>
+            <InitParams>
+                <Schema name="AssemblyLineInitParams"/>
+            </InitParams>
+        </AssemblyLine>
+    <AssemblyLine name="MCPServer_LDAP">
+            <ModTime>1790792685371</ModTime>
+            <Settings>
+                <parameter name="ALPoolSettingsDialog">false</parameter>
+                <parameter name="automapattributes">false</parameter>
+                <parameter name="createTombstones">false</parameter>
+                <parameter name="includeGlobalPrologs">true</parameter>
+                <parameter name="nullBehaviorDialog">showNullBehavior</parameter>
+            </Settings>
+            <Hooks/>
+            <CheckpointConfig/>
+            <SandboxConfig/>
+            <SimulationConfig>
+                <SimulationStates>
+                    <Component name="lookup_user" state="Enabled"/>
+                    <Component name="LDAPLookup_User" state="Enabled"/>
+                    <Component name="get_user_groups" state="Enabled"/>
+                    <Component name="ConnectorLoop" state="Enabled"/>
+                    <Component name="AttributeMap" state="Enabled"/>
+                    <Component name="search_users" state="Enabled"/>
+                    <Component name="ConnectorLoop_search_users" state="Enabled"/>
+                    <Component name="innerLoop" state="Enabled"/>
+                    <Component name="outerLoop" state="Enabled"/>
+                    <Component name="get_user_overview" state="Enabled"/>
+                    <Component name="LDAPLookup_Overview" state="Enabled"/>
+                    <Component name="InnerLoop" state="Enabled"/>
+                    <Component name="ConnectorLoop_Overview" state="Enabled"/>
+                    <Component name="AttributeMap_1" state="Enabled"/>
+                    <Component name="list_group_members" state="Enabled"/>
+                    <Component name="LDAPLookup_ListMembers" state="Enabled"/>
+                    <Component name="assembler" state="Enabled"/>
+                    <Component name="MCPServerConnection" state="Enabled"/>
+                </SimulationStates>
+                <ProxySettings/>
+            </SimulationConfig>
+            <LogConfig/>
+            <ContainerEF name="EntryFeedContainer">
+                <ModTime>1790771033622</ModTime>
+                <Connector name="MCPServerConnection">
+                    <InheritFrom>system:/Connectors/MCPServerConnector</InheritFrom>
+                    <ModTime>1790771033622</ModTime>
+                    <ConnectorMode>Server</ConnectorMode>
+                    <ConnectorState>Enabled</ConnectorState>
+                    <Configuration>
+                        <UserComment></UserComment>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790771033622</ModTime>
+                        <parameter name="allowedOrigins">https://good.example</parameter>
+                        <parameter name="bearerToken">@SUBSTITUTE{property.MCP_Server_Example:bearerToken}</parameter>
+                        <parameter name="debug">false</parameter>
+                        <parameter name="healthPath">/health</parameter>
+                        <parameter name="toolCatalog"><![CDATA[[
+  {"name":"lookup_user","description":"Look up a user's profile by uid.","inputSchema":{"type":"object","properties":{"userId":{"type":"string","description":"uid, e.g. alice"}},"required":["userId"]}},
+  {"name":"get_user_groups","description":"List groups a user belongs to.","inputSchema":{"type":"object","properties":{"userId":{"type":"string"}},"required":["userId"]}},
+  {"name":"list_group_members","description":"List members of a group.","inputSchema":{"type":"object","properties":{"groupId":{"type":"string","description":"group cn, e.g. engineering"}},"required":["groupId"]}},
+  {"name":"search_users","description":"Find users by partial name, uid, or email.","inputSchema":{"type":"object","properties":{"q":{"type":"string","description":"substring to match"}},"required":["q"]}},
+  {"name":"get_user_overview","description":"Full picture of a user: profile plus group memberships.","inputSchema":{"type":"object","properties":{"userId":{"type":"string"}},"required":["userId"]}}
+]]]></parameter>
+                    </Configuration>
+                    <Parser>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790437014829</ModTime>
+                    </Parser>
+                    <AttributeMap name="Input">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790646654096</ModTime>
+                        <AttributeMapItem>
+                            <Name>*</Name>
+                            <Type>simple</Type>
+                            <Simple>*</Simple>
+                        </AttributeMapItem>
+                    </AttributeMap>
+                    <AttributeMap name="Output">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790648780968</ModTime>
+                        <AttributeMapItem>
+                            <Name>$mcp.isError</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.isError</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>$mcp.result</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.result</Simple>
+                        </AttributeMapItem>
+                        <AttributeMapItem>
+                            <Name>$mcp.structured</Name>
+                            <Type>simple</Type>
+                            <Simple>$mcp.structured</Simple>
+                        </AttributeMapItem>
+                    </AttributeMap>
+                    <DeltaSettings/>
+                    <Schema name="Input">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790437014829</ModTime>
+                    </Schema>
+                    <Schema name="Output">
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790437014829</ModTime>
+                    </Schema>
+                    <LinkCriteria>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790437014829</ModTime>
+                    </LinkCriteria>
+                    <Hooks>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ModTime>1790437014829</ModTime>
+                    </Hooks>
+                    <CheckpointConfig/>
+                    <SandboxConfig/>
+                    <Reconnect>
+                        <InheritFrom>[parent]</InheritFrom>
+                        <ReconnectRules/>
+                    </Reconnect>
+                    <Operations/>
+                    <PoolDefinition>
+                        <InheritFrom>[parent]</InheritFrom>
+                    </PoolDefinition>
+                    <PoolInstance/>
+                </Connector>
+            </ContainerEF>
+            <ContainerDF name="DataFlowContainer">
+                <ModTime>1790792658287</ModTime>
+                <Branch name="lookup_user">
+                    <ModTime>1790792658287</ModTime>
+                    <Connector name="LDAPLookup_User">
+                        <InheritFrom>/Connectors/LDAPLookup</InheritFrom>
+                        <ModTime>1790792658287</ModTime>
+                        <ConnectorMode>Lookup</ConnectorMode>
+                        <ConnectorState>Enabled</ConnectorState>
+                        <Configuration>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ModTime>1790715244186</ModTime>
+                            <parameter name="ldapSearchBase">@SUBSTITUTE{property.MCP_Server_Example:ldapSearchBase_people}</parameter>
+                            <parameter name="ldapSearchFilter">(objectClass=inetOrgPerson)</parameter>
+                        </Configuration>
+                        <Parser>
+                            <InheritFrom>[parent]</InheritFrom>
+                        </Parser>
+                        <AttributeMap name="Input">
+                            <InheritFrom>[no inheritance]</InheritFrom>
+                            <ModTime>1790466944018</ModTime>
+                            <AttributeMapItem>
+                                <Name>cn</Name>
+                                <Type>simple</Type>
+                                <Simple>cn</Simple>
+                            </AttributeMapItem>
+                            <AttributeMapItem>
+                                <Name>mail</Name>
+                                <Type>simple</Type>
+                                <Simple>mail</Simple>
+                            </AttributeMapItem>
+                            <AttributeMapItem>
+                                <Name>sn</Name>
+                                <Type>simple</Type>
+                                <Simple>sn</Simple>
+                            </AttributeMapItem>
+                            <AttributeMapItem>
+                                <Name>uid</Name>
+                                <Type>simple</Type>
+                                <Simple>uid</Simple>
+                            </AttributeMapItem>
+                        </AttributeMap>
+                        <AttributeMap name="Output">
+                            <InheritFrom>[parent]</InheritFrom>
+                        </AttributeMap>
+                        <DeltaSettings/>
+                        <Schema name="Input">
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ModTime>1790466793425</ModTime>
+                            <SchemaItem>
+                                <Name>audio</Name>
+                                <NativeSyntax>MAY/Audio{25000}/RFC1274: audio (u-law)</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>businessCategory</Name>
+                                <NativeSyntax>MAY/Directory String{128}/RFC2256: business category</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>carLicense</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: vehicle license or registration plate</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>departmentNumber</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: identifies a department within an organization</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>displayName</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: preferred name to be used when displaying entries</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>employeeNumber</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: numerically identifies an employee within an organization</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>employeeType</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: type of employment for a person</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>givenName</Name>
+                                <NativeSyntax>MAY/String/RFC2256: first name(s) for which the entity is known by</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>homePhone</Name>
+                                <NativeSyntax>MAY/Telephone Number/RFC1274: home telephone number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>homePostalAddress</Name>
+                                <NativeSyntax>MAY/Postal Address/RFC1274: home postal address</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>initials</Name>
+                                <NativeSyntax>MAY/String/RFC2256: initials of some or all of names, but not the surname(s).</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>jpegPhoto</Name>
+                                <NativeSyntax>MAY/JPEG/RFC2798: a JPEG image</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>labeledURI</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2079: Uniform Resource Identifier with optional label</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>mail</Name>
+                                <NativeSyntax>MAY/IA5 String{256}/RFC1274: RFC822 Mailbox</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>manager</Name>
+                                <NativeSyntax>MAY/DN/RFC1274: DN of manager</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>mobile</Name>
+                                <NativeSyntax>MAY/Telephone Number/RFC1274: mobile telephone number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>o</Name>
+                                <NativeSyntax>MAY/String/RFC2256: organization this object belongs to</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>pager</Name>
+                                <NativeSyntax>MAY/Telephone Number/RFC1274: pager telephone number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>photo</Name>
+                                <NativeSyntax>MAY/Fax{25000}/RFC1274: photo (G3 fax)</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>preferredLanguage</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: preferred written or spoken language for a person</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>roomNumber</Name>
+                                <NativeSyntax>MAY/Directory String{256}/RFC1274: room number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>secretary</Name>
+                                <NativeSyntax>MAY/DN/RFC1274: DN of secretary</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>uid</Name>
+                                <NativeSyntax>MAY/Directory String{256}/RFC4519: user identifier</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>userCertificate</Name>
+                                <NativeSyntax>MAY/Certificate/RFC2256: X.509 user certificate, use ;binary</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>userPKCS12</Name>
+                                <NativeSyntax>MAY/Binary/RFC2798: personal identity information, a PKCS #12 PFX</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>userSMIMECertificate</Name>
+                                <NativeSyntax>MAY/Binary/RFC2798: PKCS#7 SignedData used to support S/MIME</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>x500uniqueIdentifier</Name>
+                                <NativeSyntax>MAY/Bit String/RFC2256: X.500 unique identifier</NativeSyntax>
+                            </SchemaItem>
+                        </Schema>
+                        <Schema name="Output">
+                            <InheritFrom>[parent]</InheritFrom>
+                        </Schema>
+                        <LinkCriteria>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ModTime>1790467286587</ModTime>
+                            <MatchAny>true</MatchAny>
+                            <LinkCriteriaItem>
+                                <Key>1a0e01ca386</Key>
+                                <Attribute>uid</Attribute>
+                                <Operator>equals</Operator>
+                                <Value>$userId</Value>
+                            </LinkCriteriaItem>
+                        </LinkCriteria>
+                        <Hooks>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ModTime>1790649597016</ModTime>
+                            <Hook name="lookup_nomatch">
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <Name>lookup_nomatch</Name>
+                                <Script><![CDATA[work.setAttribute("$mcp.result", "No match for '" + work.getString("userId") + "'.");
+work.setAttribute("$mcp.structured", "{\"found\":false}");]]></Script>
+                                <Enabled>true</Enabled>
+                            </Hook>
+                        </Hooks>
+                        <CheckpointConfig/>
+                        <SandboxConfig/>
+                        <Reconnect>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ReconnectRules/>
+                        </Reconnect>
+                        <Operations/>
+                        <PoolDefinition>
+                            <InheritFrom>[parent]</InheritFrom>
+                        </PoolDefinition>
+                        <PoolInstance>
+                            <ModTime>1790792658287</ModTime>
+                            <Enabled>false</Enabled>
+                            <ExhaustedPoolBehavior>Wait</ExhaustedPoolBehavior>
+                        </PoolInstance>
+                    </Connector>
+                    <Conditions>
+                        <ModTime>1790466124042</ModTime>
+                        <BranchCondition>
+                            <LeftHand>$mcp.tool</LeftHand>
+                            <Operator>equals</Operator>
+                            <RightHand>lookup_user</RightHand>
+                            <MatchAny>false</MatchAny>
+                        </BranchCondition>
+                    </Conditions>
+                    <MatchAny>false</MatchAny>
+                    <Enabled>true</Enabled>
+                    <Type>0</Type>
+                </Branch>
+                <Branch name="get_user_groups">
+                    <ModTime>1790729082009</ModTime>
+                    <Loop name="ConnectorLoop">
+                        <ModTime>1790729082009</ModTime>
+                        <LoopType>1</LoopType>
+                        <Connector name="ConnectorLoop">
+                            <InheritFrom>/Connectors/LDAPLookup</InheritFrom>
+                            <ModTime>1790729082009</ModTime>
+                            <ConnectorMode>Iterator</ConnectorMode>
+                            <ConnectorState>Enabled</ConnectorState>
+                            <Configuration>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790715279215</ModTime>
+                                <parameter name="ldapSearchBase">@SUBSTITUTE{property.MCP_Server_Example:ldapSearchBase_group}</parameter>
+                            </Configuration>
+                            <Parser>
+                                <InheritFrom>[parent]</InheritFrom>
+                            </Parser>
+                            <AttributeMap name="Input">
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790651827694</ModTime>
+                                <AttributeMapItem>
+                                    <Name>cn</Name>
+                                    <Type>simple</Type>
+                                    <Simple>cn</Simple>
+                                </AttributeMapItem>
+                            </AttributeMap>
+                            <AttributeMap name="Output"/>
+                            <DeltaSettings>
+                                <ModTime>1790645353029</ModTime>
+                                <UniqueAttribute/>
+                                <WhenToCommit>After every database operation</WhenToCommit>
+                                <RowLocking>SERIALIZABLE</RowLocking>
+                                <ChangeDetectionMode>DETECT_ALL</ChangeDetectionMode>
+                            </DeltaSettings>
+                            <Schema name="Input">
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790651767012</ModTime>
+                                <SchemaItem>
+                                    <Name>$dn</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>cn</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>member</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>objectClass</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                            </Schema>
+                            <Schema name="Output">
+                                <UserComment>{extsyntax=TEXTAREA, name=userComment}</UserComment>
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <ModTime>1790645352637</ModTime>
+                                <SchemaItem>
+                                    <Name>automapADPassword</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>connectorFlags</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>debug</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>jndiExtraProviderParams</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapAddAttr</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapAuthenticationMethod</Name>
+                                    <NativeSyntax>DROPLIST</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapBERTrace</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapBinaryAttributes</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapPageSize</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapPassword</Name>
+                                    <NativeSyntax>PASSWORD</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapReferrals</Name>
+                                    <NativeSyntax>droplist</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapReturnAttributes</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchBase</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchFilter</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchScope</Name>
+                                    <NativeSyntax>droplist</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSizeLimit</Name>
+                                    <NativeSyntax>string</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSortAttribute</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapTimeLimit</Name>
+                                    <NativeSyntax>string</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUrl</Name>
+                                    <NativeSyntax>panel</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUseSSL</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUsername</Name>
+                                    <NativeSyntax>DN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapVLVPageSize</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>setOprAttributes</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>simulateRename</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>userComment</Name>
+                                    <NativeSyntax>TEXTAREA</NativeSyntax>
+                                </SchemaItem>
+                            </Schema>
+                            <LinkCriteria/>
+                            <Hooks>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790729082009</ModTime>
+                                <Hook name="before_initialize">
+                                    <InheritFrom>[no inheritance]</InheritFrom>
+                                    <Name>before_initialize</Name>
+                                    <Script><![CDATA[if (work != null) {
+  var uid = work.getString("userId");
+  var base = system.getTDIProperty("ldapSearchBase_people");
+  thisConnector.connector.setParam("ldapSearchFilter",
+    "(&(objectClass=groupOfNames)(member=uid=" + uid + "," + base + "))");
+}]]></Script>
+                                    <Enabled>true</Enabled>
+                                </Hook>
+                            </Hooks>
+                            <CheckpointConfig/>
+                            <SandboxConfig/>
+                            <Reconnect>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ReconnectRules/>
+                            </Reconnect>
+                            <Operations/>
+                            <PoolDefinition>
+                                <InheritFrom>[parent]</InheritFrom>
+                            </PoolDefinition>
+                            <PoolInstance/>
+                        </Connector>
+                        <Branch name="ConnectorLoop">
+                            <ModTime>1790729082009</ModTime>
+                            <ALMap name="AttributeMap">
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <ModTime>1790683542270</ModTime>
+                                <AttributeMap name="Input">
+                                    <InheritFrom>[parent]</InheritFrom>
+                                    <ModTime>1790683542270</ModTime>
+                                    <AttributeMapItem>
+                                        <Name>cn</Name>
+                                        <Type>advanced</Type>
+                                        <Script>work.addAttributeValue("groups", work.getString("cn"));</Script>
+                                    </AttributeMapItem>
+                                </AttributeMap>
+                                <State>Enabled</State>
+                            </ALMap>
+                            <Conditions/>
+                            <MatchAny>false</MatchAny>
+                            <Enabled>true</Enabled>
+                            <Type>0</Type>
+                        </Branch>
+                    </Loop>
+                    <Conditions>
+                        <ModTime>1790649883827</ModTime>
+                        <BranchCondition>
+                            <LeftHand>$mcp.tool</LeftHand>
+                            <Operator>equals</Operator>
+                            <RightHand>get_user_groups</RightHand>
+                            <MatchAny>false</MatchAny>
+                        </BranchCondition>
+                    </Conditions>
+                    <MatchAny>false</MatchAny>
+                    <Enabled>true</Enabled>
+                    <Type>1</Type>
+                </Branch>
+                <Branch name="search_users">
+                    <ModTime>1790715397661</ModTime>
+                    <Loop name="ConnectorLoop_search_users">
+                        <ModTime>1790715397661</ModTime>
+                        <LoopType>1</LoopType>
+                        <Connector name="ConnectorLoop_search_users">
+                            <InheritFrom>/Connectors/LDAPLookup</InheritFrom>
+                            <ModTime>1790715397661</ModTime>
+                            <ConnectorMode>Iterator</ConnectorMode>
+                            <ConnectorState>Enabled</ConnectorState>
+                            <Configuration>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790715397661</ModTime>
+                                <parameter name="debug">true</parameter>
+                                <parameter name="ldapSearchBase">@SUBSTITUTE{property.MCP_Server_Example:ldapSearchBase_people}</parameter>
+                            </Configuration>
+                            <Parser>
+                                <InheritFrom>[parent]</InheritFrom>
+                            </Parser>
+                            <AttributeMap name="Input">
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790712680116</ModTime>
+                                <AttributeMapItem>
+                                    <Name>cn</Name>
+                                    <Type>simple</Type>
+                                    <Simple>cn</Simple>
+                                </AttributeMapItem>
+                                <AttributeMapItem>
+                                    <Name>mail</Name>
+                                    <Type>simple</Type>
+                                    <Simple>mail</Simple>
+                                </AttributeMapItem>
+                                <AttributeMapItem>
+                                    <Name>uid</Name>
+                                    <Type>simple</Type>
+                                    <Simple>uid</Simple>
+                                </AttributeMapItem>
+                            </AttributeMap>
+                            <AttributeMap name="Output"/>
+                            <DeltaSettings>
+                                <ModTime>1790710430802</ModTime>
+                                <UniqueAttribute/>
+                                <WhenToCommit>After every database operation</WhenToCommit>
+                                <RowLocking>SERIALIZABLE</RowLocking>
+                                <ChangeDetectionMode>DETECT_ALL</ChangeDetectionMode>
+                            </DeltaSettings>
+                            <Schema name="Input">
+                                <InheritFrom>[parent]</InheritFrom>
+                            </Schema>
+                            <Schema name="Output">
+                                <UserComment>{extsyntax=TEXTAREA, name=userComment}</UserComment>
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <ModTime>1790710430376</ModTime>
+                                <SchemaItem>
+                                    <Name>automapADPassword</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>connectorFlags</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>debug</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>jndiExtraProviderParams</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapAddAttr</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapAuthenticationMethod</Name>
+                                    <NativeSyntax>DROPLIST</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapBERTrace</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapBinaryAttributes</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapPageSize</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapPassword</Name>
+                                    <NativeSyntax>PASSWORD</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapReferrals</Name>
+                                    <NativeSyntax>droplist</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapReturnAttributes</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchBase</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchFilter</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchScope</Name>
+                                    <NativeSyntax>droplist</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSizeLimit</Name>
+                                    <NativeSyntax>string</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSortAttribute</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapTimeLimit</Name>
+                                    <NativeSyntax>string</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUrl</Name>
+                                    <NativeSyntax>panel</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUseSSL</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUsername</Name>
+                                    <NativeSyntax>DN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapVLVPageSize</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>setOprAttributes</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>simulateRename</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>userComment</Name>
+                                    <NativeSyntax>TEXTAREA</NativeSyntax>
+                                </SchemaItem>
+                            </Schema>
+                            <LinkCriteria/>
+                            <Hooks>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790714466726</ModTime>
+                                <Hook name="before_initialize">
+                                    <InheritFrom>[no inheritance]</InheritFrom>
+                                    <Name>before_initialize</Name>
+                                    <Script><![CDATA[function esc(s){ return String(s).replace(/\\/g,"\\5c").replace(/\*/g,"\\2a").replace(/\(/g,"\\28").replace(/\)/g,"\\29").replace(/\u0000/g,"\\00"); }
+var q = esc(work.getString("q"));
+thisConnector.connector.setParam("ldapSearchFilter", "(&(objectClass=inetOrgPerson)(|(cn=*"+q+"*)(sn=*"+q+"*)(uid=*"+q+"*)(mail=*"+q+"*)))");]]></Script>
+                                    <Enabled>true</Enabled>
+                                </Hook>
+                            </Hooks>
+                            <CheckpointConfig/>
+                            <SandboxConfig/>
+                            <Reconnect>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ReconnectRules/>
+                            </Reconnect>
+                            <Operations/>
+                            <PoolDefinition>
+                                <InheritFrom>[parent]</InheritFrom>
+                            </PoolDefinition>
+                            <PoolInstance/>
+                        </Connector>
+                        <Branch name="ConnectorLoop_search_users">
+                            <ModTime>1790715397661</ModTime>
+                            <Script name="innerLoop">
+                                <ModTime>1790714124978</ModTime>
+                                <parameter name="script">work.addAttributeValue("matches", work.getString("uid") + " \u2014 " + work.getString("cn") + " &lt;" + work.getString("mail") + "&gt;");</parameter>
+                            </Script>
+                            <Conditions/>
+                            <MatchAny>false</MatchAny>
+                            <Enabled>true</Enabled>
+                            <Type>0</Type>
+                        </Branch>
+                    </Loop>
+                    <Script name="outerLoop">
+                        <ModTime>1790714156637</ModTime>
+                        <parameter name="script">work.removeAttribute("uid"); work.removeAttribute("cn"); work.removeAttribute("mail");</parameter>
+                    </Script>
+                    <Conditions>
+                        <ModTime>1790695527484</ModTime>
+                        <BranchCondition>
+                            <LeftHand>$mcp.tool</LeftHand>
+                            <Operator>equals</Operator>
+                            <RightHand>search_users</RightHand>
+                            <MatchAny>false</MatchAny>
+                        </BranchCondition>
+                    </Conditions>
+                    <MatchAny>false</MatchAny>
+                    <Enabled>true</Enabled>
+                    <Type>1</Type>
+                </Branch>
+                <Branch name="get_user_overview">
+                    <ModTime>1790717859197</ModTime>
+                    <Connector name="LDAPLookup_Overview">
+                        <InheritFrom>/Connectors/LDAPLookup</InheritFrom>
+                        <ModTime>1790715558268</ModTime>
+                        <ConnectorMode>Lookup</ConnectorMode>
+                        <ConnectorState>Enabled</ConnectorState>
+                        <Configuration>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <parameter name="ldapSearchBase">@SUBSTITUTE{property.MCP_Server_Example:ldapSearchBase_people}</parameter>
+                            <parameter name="ldapSearchFilter">(objectClass=inetOrgPerson)</parameter>
+                        </Configuration>
+                        <Parser>
+                            <InheritFrom>[parent]</InheritFrom>
+                        </Parser>
+                        <AttributeMap name="Input">
+                            <InheritFrom>[no inheritance]</InheritFrom>
+                            <AttributeMapItem>
+                                <Name>cn</Name>
+                                <Type>simple</Type>
+                                <Simple>cn</Simple>
+                            </AttributeMapItem>
+                            <AttributeMapItem>
+                                <Name>mail</Name>
+                                <Type>simple</Type>
+                                <Simple>mail</Simple>
+                            </AttributeMapItem>
+                            <AttributeMapItem>
+                                <Name>sn</Name>
+                                <Type>simple</Type>
+                                <Simple>sn</Simple>
+                            </AttributeMapItem>
+                            <AttributeMapItem>
+                                <Name>uid</Name>
+                                <Type>simple</Type>
+                                <Simple>uid</Simple>
+                            </AttributeMapItem>
+                        </AttributeMap>
+                        <AttributeMap name="Output">
+                            <InheritFrom>[parent]</InheritFrom>
+                        </AttributeMap>
+                        <DeltaSettings/>
+                        <Schema name="Input">
+                            <InheritFrom>[parent]</InheritFrom>
+                            <SchemaItem>
+                                <Name>audio</Name>
+                                <NativeSyntax>MAY/Audio{25000}/RFC1274: audio (u-law)</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>businessCategory</Name>
+                                <NativeSyntax>MAY/Directory String{128}/RFC2256: business category</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>carLicense</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: vehicle license or registration plate</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>departmentNumber</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: identifies a department within an organization</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>displayName</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: preferred name to be used when displaying entries</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>employeeNumber</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: numerically identifies an employee within an organization</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>employeeType</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: type of employment for a person</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>givenName</Name>
+                                <NativeSyntax>MAY/String/RFC2256: first name(s) for which the entity is known by</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>homePhone</Name>
+                                <NativeSyntax>MAY/Telephone Number/RFC1274: home telephone number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>homePostalAddress</Name>
+                                <NativeSyntax>MAY/Postal Address/RFC1274: home postal address</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>initials</Name>
+                                <NativeSyntax>MAY/String/RFC2256: initials of some or all of names, but not the surname(s).</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>jpegPhoto</Name>
+                                <NativeSyntax>MAY/JPEG/RFC2798: a JPEG image</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>labeledURI</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2079: Uniform Resource Identifier with optional label</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>mail</Name>
+                                <NativeSyntax>MAY/IA5 String{256}/RFC1274: RFC822 Mailbox</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>manager</Name>
+                                <NativeSyntax>MAY/DN/RFC1274: DN of manager</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>mobile</Name>
+                                <NativeSyntax>MAY/Telephone Number/RFC1274: mobile telephone number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>o</Name>
+                                <NativeSyntax>MAY/String/RFC2256: organization this object belongs to</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>pager</Name>
+                                <NativeSyntax>MAY/Telephone Number/RFC1274: pager telephone number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>photo</Name>
+                                <NativeSyntax>MAY/Fax{25000}/RFC1274: photo (G3 fax)</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>preferredLanguage</Name>
+                                <NativeSyntax>MAY/Directory String/RFC2798: preferred written or spoken language for a person</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>roomNumber</Name>
+                                <NativeSyntax>MAY/Directory String{256}/RFC1274: room number</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>secretary</Name>
+                                <NativeSyntax>MAY/DN/RFC1274: DN of secretary</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>uid</Name>
+                                <NativeSyntax>MAY/Directory String{256}/RFC4519: user identifier</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>userCertificate</Name>
+                                <NativeSyntax>MAY/Certificate/RFC2256: X.509 user certificate, use ;binary</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>userPKCS12</Name>
+                                <NativeSyntax>MAY/Binary/RFC2798: personal identity information, a PKCS #12 PFX</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>userSMIMECertificate</Name>
+                                <NativeSyntax>MAY/Binary/RFC2798: PKCS#7 SignedData used to support S/MIME</NativeSyntax>
+                            </SchemaItem>
+                            <SchemaItem>
+                                <Name>x500uniqueIdentifier</Name>
+                                <NativeSyntax>MAY/Bit String/RFC2256: X.500 unique identifier</NativeSyntax>
+                            </SchemaItem>
+                        </Schema>
+                        <Schema name="Output">
+                            <InheritFrom>[parent]</InheritFrom>
+                        </Schema>
+                        <LinkCriteria>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <MatchAny>true</MatchAny>
+                            <LinkCriteriaItem>
+                                <Key>1a0e01ca386</Key>
+                                <Attribute>uid</Attribute>
+                                <Operator>equals</Operator>
+                                <Value>$userId</Value>
+                            </LinkCriteriaItem>
+                        </LinkCriteria>
+                        <Hooks>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <Hook name="lookup_nomatch">
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <Name>lookup_nomatch</Name>
+                                <Script><![CDATA[work.setAttribute("$mcp.result", "No match for '" + work.getString("userId") + "'.");
+work.setAttribute("$mcp.structured", "{\"found\":false}");]]></Script>
+                                <Enabled>true</Enabled>
+                            </Hook>
+                        </Hooks>
+                        <CheckpointConfig/>
+                        <SandboxConfig/>
+                        <Reconnect>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ReconnectRules/>
+                        </Reconnect>
+                        <Operations/>
+                        <PoolDefinition>
+                            <InheritFrom>[parent]</InheritFrom>
+                        </PoolDefinition>
+                        <PoolInstance/>
+                    </Connector>
+                    <Script name="InnerLoop">
+                        <ModTime>1790715802337</ModTime>
+                        <parameter name="script"/>
+                    </Script>
+                    <Loop name="ConnectorLoop_Overview">
+                        <ModTime>1790717859197</ModTime>
+                        <LoopType>1</LoopType>
+                        <Connector name="ConnectorLoop_Overview">
+                            <InheritFrom>/Connectors/LDAPLookup</InheritFrom>
+                            <ModTime>1790717423195</ModTime>
+                            <ConnectorMode>Iterator</ConnectorMode>
+                            <ConnectorState>Enabled</ConnectorState>
+                            <Configuration>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <parameter name="ldapSearchBase">@SUBSTITUTE{property.MCP_Server_Example:ldapSearchBase_group}</parameter>
+                            </Configuration>
+                            <Parser>
+                                <InheritFrom>[parent]</InheritFrom>
+                            </Parser>
+                            <AttributeMap name="Input">
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790717423195</ModTime>
+                                <AttributeMapItem>
+                                    <Name>gcn</Name>
+                                    <Type>simple</Type>
+                                    <Simple>cn</Simple>
+                                </AttributeMapItem>
+                            </AttributeMap>
+                            <AttributeMap name="Output"/>
+                            <DeltaSettings>
+                                <UniqueAttribute/>
+                                <WhenToCommit>After every database operation</WhenToCommit>
+                                <RowLocking>SERIALIZABLE</RowLocking>
+                                <ChangeDetectionMode>DETECT_ALL</ChangeDetectionMode>
+                            </DeltaSettings>
+                            <Schema name="Input">
+                                <InheritFrom>[parent]</InheritFrom>
+                                <SchemaItem>
+                                    <Name>$dn</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>cn</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>member</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>objectClass</Name>
+                                    <Syntax>java.lang.String</Syntax>
+                                </SchemaItem>
+                            </Schema>
+                            <Schema name="Output">
+                                <UserComment>{extsyntax=TEXTAREA, name=userComment}</UserComment>
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <SchemaItem>
+                                    <Name>automapADPassword</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>connectorFlags</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>debug</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>jndiExtraProviderParams</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapAddAttr</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapAuthenticationMethod</Name>
+                                    <NativeSyntax>DROPLIST</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapBERTrace</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapBinaryAttributes</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapPageSize</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapPassword</Name>
+                                    <NativeSyntax>PASSWORD</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapReferrals</Name>
+                                    <NativeSyntax>droplist</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapReturnAttributes</Name>
+                                    <NativeSyntax>textarea</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchBase</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchFilter</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSearchScope</Name>
+                                    <NativeSyntax>droplist</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSizeLimit</Name>
+                                    <NativeSyntax>string</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapSortAttribute</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapTimeLimit</Name>
+                                    <NativeSyntax>string</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUrl</Name>
+                                    <NativeSyntax>panel</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUseSSL</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapUsername</Name>
+                                    <NativeSyntax>DN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>ldapVLVPageSize</Name>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>setOprAttributes</Name>
+                                    <NativeSyntax>BOOLEAN</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>simulateRename</Name>
+                                    <NativeSyntax>boolean</NativeSyntax>
+                                </SchemaItem>
+                                <SchemaItem>
+                                    <Name>userComment</Name>
+                                    <NativeSyntax>TEXTAREA</NativeSyntax>
+                                </SchemaItem>
+                            </Schema>
+                            <LinkCriteria/>
+                            <Hooks>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ModTime>1790717117208</ModTime>
+                                <Hook name="before_initialize">
+                                    <InheritFrom>[no inheritance]</InheritFrom>
+                                    <Name>before_initialize</Name>
+                                    <Script><![CDATA[if (work != null) {
+  var uid = work.getString("userId");
+  var base = system.getTDIProperty("ldapSearchBase_people");
+  thisConnector.connector.setParam("ldapSearchFilter",
+    "(&(objectClass=groupOfNames)(member=uid=" + uid + "," + base + "))");
+}]]></Script>
+                                    <Enabled>true</Enabled>
+                                </Hook>
+                            </Hooks>
+                            <CheckpointConfig/>
+                            <SandboxConfig/>
+                            <Reconnect>
+                                <InheritFrom>[parent]</InheritFrom>
+                                <ReconnectRules/>
+                            </Reconnect>
+                            <Operations/>
+                            <PoolDefinition>
+                                <InheritFrom>[parent]</InheritFrom>
+                            </PoolDefinition>
+                            <PoolInstance/>
+                        </Connector>
+                        <Branch name="ConnectorLoop_Overview">
+                            <ModTime>1790717859197</ModTime>
+                            <ALMap name="AttributeMap_1">
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <ModTime>1790717859197</ModTime>
+                                <AttributeMap name="Input">
+                                    <InheritFrom>[parent]</InheritFrom>
+                                    <ModTime>1790717859197</ModTime>
+                                    <AttributeMapItem>
+                                        <Name>gcn</Name>
+                                        <Type>advanced</Type>
+                                        <Script>work.addAttributeValue("groups", work.getString("gcn"));</Script>
+                                    </AttributeMapItem>
+                                </AttributeMap>
+                                <State>Enabled</State>
+                            </ALMap>
+                            <Conditions/>
+                            <MatchAny>false</MatchAny>
+                            <Enabled>true</Enabled>
+                            <Type>0</Type>
+                        </Branch>
+                    </Loop>
+                    <Conditions>
+                        <ModTime>1790714929720</ModTime>
+                        <BranchCondition>
+                            <LeftHand>$mcp.tool</LeftHand>
+                            <Operator>equals</Operator>
+                            <RightHand>get_user_overview</RightHand>
+                            <MatchAny>false</MatchAny>
+                        </BranchCondition>
+                    </Conditions>
+                    <MatchAny>false</MatchAny>
+                    <Enabled>true</Enabled>
+                    <Type>1</Type>
+                </Branch>
+                <Branch name="list_group_members">
+                    <ModTime>1790715463542</ModTime>
+                    <Connector name="LDAPLookup_ListMembers">
+                        <InheritFrom>/Connectors/LDAPLookup</InheritFrom>
+                        <ModTime>1790715463542</ModTime>
+                        <ConnectorMode>Lookup</ConnectorMode>
+                        <ConnectorState>Enabled</ConnectorState>
+                        <Configuration>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ModTime>1790715463542</ModTime>
+                            <parameter name="ldapSearchBase">@SUBSTITUTE{property.MCP_Server_Example:ldapSearchBase_group}</parameter>
+                        </Configuration>
+                        <Parser>
+                            <InheritFrom>[parent]</InheritFrom>
+                        </Parser>
+                        <AttributeMap name="Input">
+                            <InheritFrom>[no inheritance]</InheritFrom>
+                            <ModTime>1790649198288</ModTime>
+                            <AttributeMapItem>
+                                <Name>cn</Name>
+                                <Type>simple</Type>
+                                <Simple>cn</Simple>
+                            </AttributeMapItem>
+                            <AttributeMapItem>
+                                <Name>member</Name>
+                                <Type>simple</Type>
+                                <Simple>member</Simple>
+                            </AttributeMapItem>
+                        </AttributeMap>
+                        <AttributeMap name="Output">
+                            <InheritFrom>[parent]</InheritFrom>
+                        </AttributeMap>
+                        <DeltaSettings/>
+                        <Schema name="Input">
+                            <InheritFrom>[parent]</InheritFrom>
+                        </Schema>
+                        <Schema name="Output">
+                            <InheritFrom>[parent]</InheritFrom>
+                        </Schema>
+                        <LinkCriteria>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ModTime>1790649176989</ModTime>
+                            <LinkCriteriaItem>
+                                <Key>1a0ea488439</Key>
+                                <Attribute>cn</Attribute>
+                                <Operator>equals</Operator>
+                                <Value>$groupId</Value>
+                            </LinkCriteriaItem>
+                        </LinkCriteria>
+                        <Hooks>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ModTime>1790683586150</ModTime>
+                            <Hook name="lookup_nomatch">
+                                <InheritFrom>[no inheritance]</InheritFrom>
+                                <Name>lookup_nomatch</Name>
+                                <Script><![CDATA[work.setAttribute("$mcp.result", "No match for '" + work.getString("groupId") + "'.");
+work.setAttribute("$mcp.structured", "{\"found\":false}");]]></Script>
+                                <Enabled>true</Enabled>
+                            </Hook>
+                        </Hooks>
+                        <CheckpointConfig/>
+                        <SandboxConfig/>
+                        <Reconnect>
+                            <InheritFrom>[parent]</InheritFrom>
+                            <ReconnectRules/>
+                        </Reconnect>
+                        <Operations/>
+                        <PoolDefinition>
+                            <InheritFrom>[parent]</InheritFrom>
+                        </PoolDefinition>
+                        <PoolInstance/>
+                    </Connector>
+                    <Conditions>
+                        <ModTime>1790649901069</ModTime>
+                        <BranchCondition>
+                            <LeftHand>$mcp.tool</LeftHand>
+                            <Operator>equals</Operator>
+                            <RightHand>list_group_members</RightHand>
+                            <MatchAny>false</MatchAny>
+                        </BranchCondition>
+                    </Conditions>
+                    <MatchAny>false</MatchAny>
+                    <Enabled>true</Enabled>
+                    <Type>1</Type>
+                    <ScriptDeleted>true</ScriptDeleted>
+                </Branch>
+                <Script name="assembler">
+                    <ModTime>1790710687617</ModTime>
+                    <parameter name="script"><![CDATA[var JSONObject = Packages.com.ibm.json.java.JSONObject;
+var JSONArray  = Packages.com.ibm.json.java.JSONArray;
+var Arr        = java.lang.reflect.Array;
+
+// Attributes that must always serialize as an array, even with one value:
+var listAttrs = { "groups": true, "member": true, "matches": true };
+
+function skip(nm){
+  return nm.indexOf("$mcp.")==0 || nm.indexOf("http.")==0 || nm.indexOf("conn.")==0 || nm=="userPassword";
+}
+function isList(nm, a){ return a.size() > 1 || listAttrs[nm] === true; }  // fix #2
+
+var names = work.getAttributeNames();
+var n = Arr.getLength(names);
+var out = new JSONObject();
+for (var i=0; i<n; i++){
+  var nm = names[i];
+  if (skip(nm)) continue;
+  var a = work.getAttribute(nm);
+  if (a == null) continue;
+  if (isList(nm, a)){                              // fix #2: force array for lists
+    var arr = new JSONArray();
+    for (var j=0; j<a.size(); j++) arr.add(String(a.getValue(j)));
+    out.put(nm, arr);
+  } else {
+    out.put(nm, String(a.getValue()));
+  }
+}
+work.setAttribute("$mcp.structured", out.toString());
+
+var cur = work.getString("$mcp.result");
+if (cur == null || cur == ""){
+  var text = "";
+  for (var k=0; k<n; k++){
+    var nm2 = names[k];
+    if (skip(nm2)) continue;
+    var a2 = work.getAttribute(nm2);
+    var v = "";                                    // fix #1: join ALL values, not just first
+    for (var m=0; m<a2.size(); m++){ if (v != "") v = v + " | "; v = v + a2.getValue(m); }
+    if (text != "") text = text + "; ";
+    text = text + nm2 + ": " + v;
+  }
+  work.setAttribute("$mcp.result", text);
+}]]></parameter>
+                </Script>
+            </ContainerDF>
+            <ThreadOptions>
+                <parameter name="assemblyline.ehc.executeProlog">false</parameter>
+                <parameter name="assemblyline.ehc.maxInstance">5</parameter>
+                <parameter name="assemblyline.ehc.minPrepare">5</parameter>
+            </ThreadOptions>
+            <Operations/>
+            <InitParams>
+                <Schema name="AssemblyLineInitParams"/>
+            </InitParams>
+        </AssemblyLine>
+    </Folder>
+    <Folder name="Connectors">
+        <Connector name="LDAPLookup">
+            <InheritFrom>system:/Connectors/ibmdi.LDAP</InheritFrom>
+            <ModTime>1790792645910</ModTime>
+            <ConnectorMode>Lookup</ConnectorMode>
+            <ConnectorState>Enabled</ConnectorState>
+            <Configuration>
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790729286773</ModTime>
+                <parameter name="debug">false</parameter>
+                <parameter name="ldapPassword">@SUBSTITUTE{property.MCP_Server_Example:ldapAdminPwd}</parameter>
+                <parameter name="ldapSearchBase">dc=example,dc=com</parameter>
+                <parameter name="ldapUrl">@SUBSTITUTE{property.MCP_Server_Example:ldapUrl}</parameter>
+                <parameter name="ldapUsername">@SUBSTITUTE{property.MCP_Server_Example:ldapAdminDN}</parameter>
+            </Configuration>
+            <Parser>
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790437124745</ModTime>
+            </Parser>
+            <AttributeMap name="Input">
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790466866602</ModTime>
+            </AttributeMap>
+            <AttributeMap name="Output">
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790437124745</ModTime>
+            </AttributeMap>
+            <DeltaSettings/>
+            <Schema name="Input">
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790437124745</ModTime>
+            </Schema>
+            <Schema name="Output">
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790437124745</ModTime>
+            </Schema>
+            <LinkCriteria>
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790437124745</ModTime>
+            </LinkCriteria>
+            <Hooks>
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790437124745</ModTime>
+            </Hooks>
+            <CheckpointConfig/>
+            <SandboxConfig/>
+            <Reconnect>
+                <InheritFrom>[parent]</InheritFrom>
+                <ReconnectRules/>
+            </Reconnect>
+            <Operations/>
+            <PoolDefinition>
+                <InheritFrom>[parent]</InheritFrom>
+                <ModTime>1790792645910</ModTime>
+                <Enabled>true</Enabled>
+                <MinPoolSize>20</MinPoolSize>
+                <MaxPoolSize>20</MaxPoolSize>
+                <PurgeInterval>60</PurgeInterval>
+                <InitializeAttempts>1</InitializeAttempts>
+                <InitializeSleepInterval>0</InitializeSleepInterval>
+            </PoolDefinition>
+            <PoolInstance/>
+        </Connector>
+    </Folder>
+    <Folder name="Parsers"/>
+    <Folder name="Scripts"/>
+    <JavaLibraries/>
+    <JavaProperties/>
+    <Folder name="Includes"/>
+    <Folder name="Config">
+        <LogConfig name="Logging"/>
+        <InstanceProperties name="AutoStart">
+            <AutoStart/>
+        </InstanceProperties>
+        <TombstonesConfig name="Tombstones"/>
+        <SolutionInterface name="SolutionInterface">
+            <ModTime>1781968119952</ModTime>
+            <InstanceID>MCP_Server_Example</InstanceID>
+            <enabled>true</enabled>
+        </SolutionInterface>
+    </Folder>
+    <Folder name="Functions"/>
+    <Folder name="AttributeMaps"/>
+    <Properties name="Properties">
+        <Stores>
+            <PropertyStore name="Solution-Properties">
+                <Parser/>
+                <RawConnector>
+                    <InheritFrom>system:/Connectors/ibmdi.Properties</InheritFrom>
+                    <parameter name="collectionType">Solution-Properties</parameter>
+                </RawConnector>
+                <Key>key</Key>
+                <Value>value</Value>
+                <ReadOnly>false</ReadOnly>
+                <InitialLoad>true</InitialLoad>
+                <CacheTimeout>0</CacheTimeout>
+            </PropertyStore>
+            <PropertyStore name="Global-Properties">
+                <Parser/>
+                <RawConnector>
+                    <InheritFrom>system:/Connectors/ibmdi.Properties</InheritFrom>
+                    <parameter name="collectionType">Global-Properties</parameter>
+                </RawConnector>
+                <Key>key</Key>
+                <Value>value</Value>
+                <ReadOnly>false</ReadOnly>
+                <InitialLoad>true</InitialLoad>
+                <CacheTimeout>0</CacheTimeout>
+            </PropertyStore>
+            <PropertyStore name="System-Properties">
+                <Parser/>
+                <RawConnector>
+                    <InheritFrom>system:/Connectors/ibmdi.Properties</InheritFrom>
+                    <parameter name="collectionType">System-Properties</parameter>
+                </RawConnector>
+                <Key>key</Key>
+                <Value>value</Value>
+                <ReadOnly>false</ReadOnly>
+                <InitialLoad>true</InitialLoad>
+                <CacheTimeout>0</CacheTimeout>
+            </PropertyStore>
+            <PropertyStore name="Java-Properties">
+                <Parser/>
+                <RawConnector>
+                    <InheritFrom>system:/Connectors/ibmdi.Properties</InheritFrom>
+                    <parameter name="collection">@SUBSTITUTE{config.$directory}/MCP_Server_Example.properties</parameter>
+                    <parameter name="collectionType">Java-Properties</parameter>
+                </RawConnector>
+                <Key>key</Key>
+                <Value>value</Value>
+                <ReadOnly>false</ReadOnly>
+                <InitialLoad>true</InitialLoad>
+                <CacheTimeout>0</CacheTimeout>
+            </PropertyStore>
+            <PropertyStore name="MCP_Server_Example">
+                <ModTime>1790714988591</ModTime>
+                <Parser/>
+                <RawConnector>
+                    <InheritFrom>system:/Connectors/ibmdi.Properties</InheritFrom>
+                    <parameter name="collection">@SUBSTITUTE{config.$directory}/MCP_Server_Example.properties</parameter>
+                    <parameter name="collectionType">MCP_Server_Example</parameter>
+                    <parameter name="keyAlias"/>
+                </RawConnector>
+                <Key>key</Key>
+                <Value>value</Value>
+                <ReadOnly>false</ReadOnly>
+                <InitialLoad>true</InitialLoad>
+                <CacheTimeout>0</CacheTimeout>
+            </PropertyStore>
+        </Stores>
+    </Properties>
+    <Folder name="Schedules"/>
+    <Folder name="Sequences"/>
+</MetamergeConfig>

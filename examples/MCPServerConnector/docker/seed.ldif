@@ -1,0 +1,74 @@
+dn: ou=People,dc=example,dc=com
+objectClass: organizationalUnit
+ou: People
+
+dn: ou=Groups,dc=example,dc=com
+objectClass: organizationalUnit
+ou: Groups
+
+# --- Users (inetOrgPerson, no userPassword) ---
+
+dn: uid=alice,ou=People,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: alice
+cn: Alice Anderson
+givenName: Alice
+sn: Anderson
+mail: alice@example.com
+
+dn: uid=bob,ou=People,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: bob
+cn: Bob Baker
+givenName: Bob
+sn: Baker
+mail: bob@example.com
+manager: uid=alice,ou=People,dc=example,dc=com
+
+dn: uid=carol,ou=People,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: carol
+cn: Carol Carter
+givenName: Carol
+sn: Carter
+mail: carol@example.com
+manager: uid=alice,ou=People,dc=example,dc=com
+
+dn: uid=dave,ou=People,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: dave
+cn: Dave Davis
+givenName: Dave
+sn: Davis
+mail: dave@example.com
+manager: uid=alice,ou=People,dc=example,dc=com
+
+dn: uid=erin,ou=People,dc=example,dc=com
+objectClass: inetOrgPerson
+uid: erin
+cn: Erin Evans
+givenName: Erin
+sn: Evans
+mail: erin@example.com
+manager: uid=dave,ou=People,dc=example,dc=com
+
+# --- Groups (groupOfNames; member = full user DN) ---
+
+dn: cn=engineering,ou=Groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: engineering
+member: uid=alice,ou=People,dc=example,dc=com
+member: uid=bob,ou=People,dc=example,dc=com
+member: uid=carol,ou=People,dc=example,dc=com
+
+dn: cn=sales,ou=Groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: sales
+member: uid=dave,ou=People,dc=example,dc=com
+member: uid=erin,ou=People,dc=example,dc=com
+
+dn: cn=admins,ou=Groups,dc=example,dc=com
+objectClass: groupOfNames
+cn: admins
+member: uid=alice,ou=People,dc=example,dc=com
+member: uid=dave,ou=People,dc=example,dc=com

@@ -1,0 +1,85 @@
+<project xmlns="http://maven.apache.org/POM/4.0.0">
+  <modelVersion>4.0.0</modelVersion>
+
+  <groupId>com.vdi.di</groupId>
+  <artifactId>mcp-server-connector</artifactId>
+  <version>0.1.0-SNAPSHOT</version>
+  <packaging>jar</packaging>
+
+  <properties>
+    <maven.compiler.source>17</maven.compiler.source>
+    <maven.compiler.target>17</maven.compiler.target>
+    <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    <!-- Set VDI_HOME or pass -Dvdi.home=/path/to/ISVDI -->
+    <vdi.home>${env.VDI_HOME}</vdi.home>
+  </properties>
+
+  <dependencies>
+    <!-- Platform jars: provided at runtime by VDI itself, never repackaged. See docs/SPEC.md §7. -->
+    <dependency>
+      <groupId>com.ibm.di</groupId>
+      <artifactId>miserver</artifactId>
+      <version>10.0.0</version>
+      <scope>system</scope>
+      <systemPath>${vdi.home}/jars/common/miserver.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>com.ibm.di</groupId>
+      <artifactId>miconfig</artifactId>
+      <version>10.0.0</version>
+      <scope>system</scope>
+      <systemPath>${vdi.home}/jars/common/miconfig.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>com.ibm.di</groupId>
+      <artifactId>httpserverconnector</artifactId>
+      <version>10.0.0</version>
+      <scope>system</scope>
+      <systemPath>${vdi.home}/jars/connectors/HTTPServerConnector.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>com.ibm.json</groupId>
+      <artifactId>json4j</artifactId>
+      <version>1.0</version>
+      <scope>system</scope>
+      <systemPath>${vdi.home}/jars/3rdparty/others/JSON4J.jar</systemPath>
+    </dependency>
+    <dependency>
+      <groupId>org.junit.jupiter</groupId>
+      <artifactId>junit-jupiter</artifactId>
+      <version>5.10.3</version>
+      <scope>test</scope>
+    </dependency>
+  </dependencies>
+
+  <build>
+    <finalName>mcp-server-connector</finalName>
+    <plugins>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-compiler-plugin</artifactId>
+        <version>3.13.0</version>
+      </plugin>
+      <plugin>
+        <!-- Bundles tdi.xml + NLS + forms at the jar root, as required for a VDI component jar. -->
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-resources-plugin</artifactId>
+        <version>3.3.1</version>
+      </plugin>
+      <plugin>
+        <groupId>org.apache.maven.plugins</groupId>
+        <artifactId>maven-surefire-plugin</artifactId>
+        <version>3.5.4</version>
+        <configuration>
+          <!-- Platform classes the HTTPServerConnector base class loads at runtime; tests only. -->
+          <additionalClasspathElements>
+            <additionalClasspathElement>${vdi.home}/jars/common/tdiresource.jar</additionalClasspathElement>
+            <additionalClasspathElement>${vdi.home}/jars/3rdparty/IBM/jlog.jar</additionalClasspathElement>
+            <additionalClasspathElement>${vdi.home}/jars/parsers/HTTPParser.jar</additionalClasspathElement>
+            <additionalClasspathElement>${vdi.home}/jars/3rdparty/IBM/icu4j-51_1.jar</additionalClasspathElement>
+          </additionalClasspathElements>
+        </configuration>
+      </plugin>
+    </plugins>
+  </build>
+</project>
