@@ -5,6 +5,9 @@
 cscope.out
 ncscope.out
 build.log
+unit_tests_build.log
+test_run.log
+test_install.log
 
 
 # Eclipse PDE headless-build runtime state — regenerated on every build run.
