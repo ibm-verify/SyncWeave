@@ -220,6 +220,77 @@ BUILD SUCCESSFUL
 
 ---
 
+## Building on Windows (WSL2)
+
+The build is not native-Windows: `build.xml` shells out to `sed` and `/bin/sh`.
+On Windows, `build-SyncWeave.ps1` in the repository root runs the same Ant build
+inside an AlmaLinux 9 WSL2 distro (a 1:1 RHEL 9 rebuild), reading the repo
+through `/mnt/c`. It installs Ant (from EPEL), python3, libxslt, dos2unix, rsync
+and unzip in the distro, places `ivy.jar` in `ANT_HOME/lib`, runs
+`ant resolve rename_jars` when `lib/ivy/` is empty, then runs the target and
+writes `build.log` in the repo root.
+
+### One-time setup
+
+1. Enable WSL2 (`wsl --install`, Windows 10 build 19041+ or Windows 11).
+2. Import AlmaLinux 9. It is not in the Microsoft Store, so import the image
+   from the [AlmaLinux WSL releases](https://github.com/AlmaLinux/wsl-images/releases)
+   (the script's help shows the exact, tested release URL):
+
+   ```powershell
+   Invoke-WebRequest -Uri "<AlmaLinux 9 .wsl image URL>" -OutFile "$env:TEMP\AlmaLinux9.wsl" -UseBasicParsing
+   New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\WSL\AlmaLinux9"
+   wsl --import AlmaLinux9 "$env:LOCALAPPDATA\WSL\AlmaLinux9" "$env:TEMP\AlmaLinux9.wsl"
+   wsl -d AlmaLinux9 -- cat /etc/redhat-release
+   ```
+
+3. Download the bundled JDK into the clone (`setup-jdk.sh`, run inside the distro):
+
+   ```powershell
+   cd C:\path\to\vdi-syncweave
+   wsl -d AlmaLinux9 -- bash -c 'dnf install -y wget tar gzip && bash <(tr -d \\r < setup-jdk.sh)'
+   ```
+
+### Build
+
+From the repository root in PowerShell:
+
+```powershell
+.\build-SyncWeave.ps1                    # ant package
+.\build-SyncWeave.ps1 -Target images     # full release build
+.\build-SyncWeave.ps1 -Clean             # delete export\ first (same as ant clean)
+.\build-SyncWeave.ps1 -MountedFs         # build over /mnt/c instead of ext4 (much slower, see below)
+.\build-SyncWeave.ps1 -BuildTests        # also build unit-test JARs and ship\tests\unit_tests.zip
+.\build-SyncWeave.ps1 -RunTests          # build images, install it in WSL, run the JUnit suite
+```
+
+If script execution is blocked, run it with
+`powershell -ExecutionPolicy Bypass -File .\build-SyncWeave.ps1`.
+Run `Get-Help .\build-SyncWeave.ps1 -Full` for all options (`-RepoPath`,
+`-JavaHome`, `-DistroName`, `-SkipResolve`, `-SkipIvySetup`, `-SkipSync`, `-SkipSyncBack`).
+
+By default the script rsyncs the clone to ext4 inside WSL (`/root/sb/SyncWeave`),
+builds there, and syncs `export\` (and `ship\` for `images`) back to Windows.
+A full `images` build takes about 8 minutes this way. Building directly over
+`/mnt/c` with `-MountedFs` is far slower (a test run was stopped after an hour).
+
+The JDK is not hardcoded: the script uses the newest `jdk-*` directory under
+`adks\ibm\jdk\` (where `setup-jdk.sh` puts it), so a JDK version bump needs no
+script change. Pass `-JavaHome <path>` to pick a different Linux JDK.
+
+Outputs land in the usual `export\` and `ship\` folders of the Windows clone.
+
+`-RunTests` needs a Linux product install, because `unit_tests/bin/runTestSuite.sh`
+loads `../../bin/setupCmdLine.sh`. By default the script builds `images`, unpacks
+`ship\install\SyncWeave-*-linux-x86_64.tgz` and installs it with
+`install_server.sh` into `/root/sb/test_install` inside the distro (recreated
+on every run), then stages `unit_tests` and the runtime JARs and runs the suite.
+This needs the Linux JRE that `setup-jdk.sh` puts in `adks\ibm\jre\`. To test
+against an existing Linux install instead, pass `-TestInstallRoot <path>`.
+Results are in `unit_tests_build.log` and `test_run.log` in the repo root.
+
+---
+
 ## Troubleshooting
 
 ### `TOOLS_HOME is not set` or `project.tools_home` resolves to empty
